@@ -128,6 +128,7 @@ typedef struct
     uint8_t min_frames_max;
     uint16_t duty;
     uint16_t num_bytes;
+    uint8 transient_mode; // 0: disabled, 1: enabled
 } telemetry_struct;
 telemetry_struct telemetry;
 

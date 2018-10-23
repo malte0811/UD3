@@ -11,6 +11,7 @@
 #define TT_CHART_LINE 7
 #define TT_CHART_TEXT 8
 #define TT_CHART_TEXT_CENTER 9
+#define TT_STATUS 10
 
 
 #define TT_UNIT_NONE 0
