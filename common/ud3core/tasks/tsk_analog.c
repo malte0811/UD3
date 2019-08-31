@@ -28,6 +28,7 @@
 #include "tsk_analog.h"
 #include "tsk_fault.h"
 #include "alarmevent.h"
+#include "helper/printf.h"
 
 /* RTOS includes. */
 #include "FreeRTOS.h"
@@ -171,10 +172,24 @@ CY_ISR(ADC_data_ready_ISR) {
 }
 
 CY_ISR(isr_primary) {
-    telemetry.primary_i = CT1_Get_Current(CT_PRIMARY);
-    /*if(telemetry.primary_i > configuration.max_tr_current){
-        ct1_dac_val[0]--;
-    }*/
+    uint16_t current = CT1_Get_Current(CT_PRIMARY);
+    if (measure_max_current_Read()) {
+        telemetry.primary_i = current;
+        if (measurement_settings.num_cycles>0) {
+            measure_max_current_Write(0);
+            measurement_settings.current_cycle = 0;
+        }
+    } else if (measurement_settings.num_cycles>0) {
+        char buffer[512];
+        int len = snprintf(buffer, sizeof(buffer), "Cycle %i: %iA\r\n", measurement_settings.current_cycle, current);
+		send_buffer((uint8_t*)buffer, len, measurement_settings.sender);
+        ++measurement_settings.current_cycle;
+        if (measurement_settings.current_cycle>=measurement_settings.num_cycles) {
+            measure_max_current_Write(1);
+            measurement_settings.current_cycle = measurement_settings.num_cycles = 0;
+        }
+    }
+    cycle_to_measure_Write(measurement_settings.current_cycle);
 }
 
 

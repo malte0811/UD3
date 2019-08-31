@@ -108,11 +108,9 @@ void configure_ZCD_to_PWM(void) {
 
 	//initialize the ZCD counter
 	if (configuration.start_cycles == 0) {
-		ZCD_counter_WritePeriod(1);
-		ZCD_counter_WriteCompare(1);
+		num_start_cycles_Write(1);
 	} else {
-		ZCD_counter_WritePeriod(configuration.start_cycles * 2);
-		ZCD_counter_WriteCompare(4);
+		num_start_cycles_Write(configuration.start_cycles * 2);
 	}
     
     uint16_t lead_time_temp;

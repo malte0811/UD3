@@ -49,6 +49,7 @@
 #include "helper/teslaterm.h"
 #include "math.h"
 #include "alarmevent.h"
+#include <stdlib.h>
 
 #define UNUSED_VARIABLE(N) \
 	do {                   \
@@ -87,6 +88,7 @@ uint8_t command_ethcon(char *commandline, port_str *ptr);
 uint8_t command_fuse(char *commandline, port_str *ptr);
 uint8_t command_signals(char *commandline, port_str *ptr);
 uint8_t command_alarms(char *commandline, port_str *ptr);
+uint8_t command_plot_i_prim(char *commandline, port_str *ptr);
 
 uint8_t callback_ConfigFunction(parameter_entry * params, uint8_t index, port_str *ptr);
 uint8_t callback_DefaultFunction(parameter_entry * params, uint8_t index, port_str *ptr);
@@ -277,6 +279,7 @@ command_entry commands[] = {
     ADD_COMMAND("signals"       ,command_signals        ,"For debugging")
     ADD_COMMAND("alarms"        ,command_alarms         ,"Alarms [get/roll/reset]")
     ADD_COMMAND("synthmon"      ,command_SynthMon       ,"Synthesizer status")
+    ADD_COMMAND("plot_i_prim"   ,command_plot_i_prim    ,"Plot primary current per half-cycle")
 };
 
 void eeprom_load(port_str *ptr){
@@ -698,6 +701,22 @@ uint8_t command_alarms(char *commandline, port_str *ptr) {
     }
     
     HELP_TEXT("Usage: alarms [get|roll|reset]\r\n");
+}
+
+uint8_t command_plot_i_prim(char *commandline, port_str *ptr) {
+    SKIP_SPACE(commandline);
+    CHECK_NULL(commandline);
+    
+    if (measurement_settings.num_cycles>0) {
+        //TODO print error
+        return 1;
+    } else {
+        char* temp;
+        measurement_settings.num_cycles = strtoul(commandline,&temp,10);
+        measurement_settings.sender = ptr;
+    	return 0;
+    }
+    HELP_TEXT("Usage: plot_i_prim [number of half-cycles]\r\n");
 }
 
 /*****************************************************************************
