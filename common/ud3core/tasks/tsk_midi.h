@@ -37,6 +37,24 @@
 #include "task.h"
 #include "queue.h"
 #include "semphr.h"
+    
+#include "cli_basic.h"
+    
+typedef struct __midich__ {
+	//uint8 expression; // Expression: Control change (Bxh) 0 bH
+	uint8 rpn_lsb;	// RPN (LSB): Control change (Bxh) 64 H
+	uint8 rpn_msb;	// RPN (MSB): Control change (Bxh) 65 H
+	uint8 bendrange;  // Pitch Bend Sensitivity (0 - ffh)
+	int16 pitchbend;  // Pitch Bend (0-3fffh)
+    uint8 attack;
+    uint8 decay;
+    uint8 release;
+	uint8 updated;	// Was it updated (whether BentRange or PitchBent was rewritten)
+} MIDICH;
+    
+#define N_CHANNEL 8
+
+#define N_MIDICHANNEL 16
 
 xQueueHandle qMIDI_rx;
 
@@ -52,6 +70,8 @@ void kill_accu();
 
 extern xQueueHandle qSID;
 
+extern MIDICH midich[N_MIDICHANNEL];
+
 extern const uint8_t kill_msg[3];
 
 struct sid_f{
@@ -60,12 +80,18 @@ struct sid_f{
     uint16_t pw[3];
     uint8_t gate[3];
     uint8_t wave[3];
+    uint8_t attack[3];
+    uint8_t decay[3];
+    uint8_t sustain[3];
+    uint8_t release[3];
     uint16_t master_pw;
 };
 
 #define SYNTH_OFF  0
 #define SYNTH_MIDI 1
 #define SYNTH_SID  2
+
+uint8_t command_SynthMon(char *commandline, port_str *ptr);
 
 /*
  * Add user function prototypes in the below merge region to add user

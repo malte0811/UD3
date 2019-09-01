@@ -40,7 +40,7 @@ void alarm_push(uint8_t level, const char* message, int32_t value){
         xQueueReceive(qAlarms,&temp,0);
     }
     temp.alarm_level = level;
-    temp.message = message;
+    temp.message = (char*)message;
     temp.num = num;
     temp.value = value;
     temp.timestamp = xTaskGetTickCount() * portTICK_RATE_MS;
@@ -54,9 +54,15 @@ uint32_t alarm_get_num(){
 
 uint32_t alarm_get(uint32_t index, ALARMS * alm){
     if(uxQueueMessagesWaiting(qAlarms)){
-        xQueuePeekIndex(qAlarms, alm, index,0);
-       // xQueueReceive(qAlarms, alm,0);
-        return pdPASS;
+       return xQueuePeekIndex(qAlarms, alm, index,0);
+    }else{
+        return pdFAIL;
+    }
+}
+
+uint32_t alarm_pop(ALARMS * alm){
+    if(uxQueueMessagesWaiting(qAlarms)){
+        return xQueueReceive(qAlarms, alm,0);
     }else{
         return pdFAIL;
     }

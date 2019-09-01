@@ -49,6 +49,7 @@
 #include "helper/teslaterm.h"
 #include "math.h"
 #include "alarmevent.h"
+#include <stdlib.h>
 
 #define UNUSED_VARIABLE(N) \
 	do {                   \
@@ -87,6 +88,7 @@ uint8_t command_ethcon(char *commandline, port_str *ptr);
 uint8_t command_fuse(char *commandline, port_str *ptr);
 uint8_t command_signals(char *commandline, port_str *ptr);
 uint8_t command_alarms(char *commandline, port_str *ptr);
+uint8_t command_plot_i_prim(char *commandline, port_str *ptr);
 
 uint8_t callback_ConfigFunction(parameter_entry * params, uint8_t index, port_str *ptr);
 uint8_t callback_DefaultFunction(parameter_entry * params, uint8_t index, port_str *ptr);
@@ -98,6 +100,11 @@ uint8_t callback_SynthFunction(parameter_entry * params, uint8_t index, port_str
 uint8_t callback_i2tFunction(parameter_entry * params, uint8_t index, port_str *ptr);
 uint8_t callback_baudrateFunction(parameter_entry * params, uint8_t index, port_str *ptr);
 uint8_t callback_VisibleFunction(parameter_entry * params, uint8_t index, port_str *ptr);
+uint8_t callback_MchFunction(parameter_entry * params, uint8_t index, port_str *ptr);
+uint8_t callback_MchCopyFunction(parameter_entry * params, uint8_t index, port_str *ptr);
+uint8_t callback_ivoUART(parameter_entry * params, uint8_t index, port_str *ptr);
+
+void update_ivo_uart();
 
 
 uint8_t burst_state = 0;
@@ -134,10 +141,6 @@ void init_config(){
     configuration.max_tr_duty = 100;
     configuration.max_qcw_duty = 350;
     configuration.temp1_setpoint = 30;
-    configuration.ext_trig_enable = 1;
-    configuration.batt_lockout_v = 360;
-    configuration.slr_fswitch = 500;
-    configuration.slr_vbus = 200;
     configuration.ps_scheme = 2;
     configuration.autotune_s = 1;
     configuration.baudrate = 500000;
@@ -158,6 +161,7 @@ void init_config(){
     configuration.ct2_offset = 0;
     configuration.ct2_current = 0;
     configuration.chargedelay = 1000;
+    configuration.ivo_uart = 0;
     
     param.pw = 0;
     param.pwd = 50000;
@@ -171,9 +175,11 @@ void init_config(){
     param.qcw_ramp = 2;
     param.qcw_repeat = 500;
     param.transpose = 0;
+    param.mch = 0;
     param.synth = SYNTH_MIDI;
     
     i2t_set_limit(configuration.max_const_i,configuration.max_fault_i,10000);
+    update_ivo_uart();
 }
 
 // clang-format off
@@ -197,6 +203,10 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"qcw_repeat"      , param.qcw_repeat              , TYPE_UNSIGNED ,0      ,1000   ,0      ,NULL                        ,"QCW pulse repeat time [ms] <100=single shot")
     ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"transpose"       , param.transpose               , TYPE_SIGNED   ,-48    ,48     ,0      ,NULL                        ,"Transpose MIDI")
     ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"synth"           , param.synth                   , TYPE_UNSIGNED ,0      ,2      ,0      ,callback_SynthFunction      ,"0=off 1=MIDI 2=SID")
+    ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"mch"             , param.mch                     , TYPE_UNSIGNED ,0      ,16     ,0      ,callback_MchFunction        ,"MIDI channel 16=write to all channels")
+    ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"attack"          , midich[0].attack              , TYPE_UNSIGNED ,0      ,127    ,0      ,callback_MchCopyFunction    ,"MIDI attack time of mch") //WARNING: Must be mch index +1
+    ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"decay"           , midich[0].decay               , TYPE_UNSIGNED ,0      ,127    ,0      ,callback_MchCopyFunction    ,"MIDI decay time of mch")  //WARNING: Must be mch index +2
+    ADD_PARAM(PARAM_DEFAULT ,VISIBLE_TRUE ,"release"         , midich[0].release             , TYPE_UNSIGNED ,0      ,127    ,0      ,callback_MchCopyFunction    ,"MIDI release time of mch")//WARNING: Must be mch index +3
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"watchdog"        , configuration.watchdog        , TYPE_UNSIGNED ,0      ,1      ,0      ,callback_ConfigFunction     ,"Watchdog Enable")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"max_tr_pw"       , configuration.max_tr_pw       , TYPE_UNSIGNED ,0      ,3000   ,0      ,callback_ConfigFunction     ,"Maximum TR PW [uSec]")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"max_tr_prf"      , configuration.max_tr_prf      , TYPE_UNSIGNED ,0      ,3000   ,0      ,callback_ConfigFunction     ,"Maximum TR frequency [Hz]")
@@ -222,10 +232,8 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"max_tr_duty"     , configuration.max_tr_duty     , TYPE_UNSIGNED ,1      ,500    ,10     ,callback_ConfigFunction     ,"Max TR duty cycle [%]")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"max_qcw_duty"    , configuration.max_qcw_duty    , TYPE_UNSIGNED ,1      ,500    ,10     ,callback_ConfigFunction     ,"Max QCW duty cycle [%]")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"temp1_setpoint"  , configuration.temp1_setpoint  , TYPE_UNSIGNED ,0      ,100    ,0      ,NULL                        ,"Setpoint for fan [*C]")
-    ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"batt_lockout_v"  , configuration.batt_lockout_v  , TYPE_UNSIGNED ,0      ,500    ,0      ,NULL                        ,"Battery lockout voltage [V]")
-    ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"slr_fswitch"     , configuration.slr_fswitch     , TYPE_UNSIGNED ,0      ,1000   ,10     ,callback_ConfigFunction     ,"SLR switch frequency [kHz]")
-    ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"slr_vbus"        , configuration.slr_vbus        , TYPE_UNSIGNED ,0      ,1000   ,0      ,NULL                        ,"SLR Vbus [V]")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"ps_scheme"       , configuration.ps_scheme       , TYPE_UNSIGNED ,0      ,5      ,0      ,callback_ConfigFunction     ,"Power supply sheme")
+    ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"charge_delay"    , configuration.chargedelay     , TYPE_UNSIGNED ,1      ,60000  ,0      ,callback_ConfigFunction     ,"Delay for the charge relay [ms]")  
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"autotune_s"      , configuration.autotune_s      , TYPE_UNSIGNED ,1      ,32     ,0      ,NULL                        ,"Number of samples for Autotune")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"ud_name"         , configuration.ud_name         , TYPE_STRING   ,0      ,0      ,0      ,NULL                        ,"Name of the Coil [15 chars]")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"ip_addr"         , configuration.ip_addr         , TYPE_STRING   ,0      ,0      ,0      ,NULL                        ,"IP-Adress of the UD3")
@@ -239,8 +247,8 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"ssid"            , configuration.ssid            , TYPE_STRING   ,0      ,0      ,0      ,NULL                        ,"WLAN SSID")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"passwd"          , configuration.passwd          , TYPE_STRING   ,0      ,0      ,0      ,NULL                        ,"WLAN password")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"baudrate"        , configuration.baudrate        , TYPE_UNSIGNED ,1200   ,4000000,0      ,callback_baudrateFunction   ,"Serial baudrate")
+    ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"ivo_uart"        , configuration.ivo_uart        , TYPE_UNSIGNED ,0      ,11     ,0      ,callback_ivoUART            ,"[RX][TX] 0=not inverted 1=inverted")
     ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"r_bus"           , configuration.r_top           , TYPE_UNSIGNED ,100    ,1000000,1000   ,NULL                        ,"Series resistor of voltage input [kOhm]")
-    ADD_PARAM(PARAM_CONFIG  ,VISIBLE_TRUE ,"charge_delay"    , configuration.chargedelay     , TYPE_UNSIGNED ,1      ,60000  ,0      ,callback_ConfigFunction     ,"Delay for the charge relay [ms]")
 };
 
 /*****************************************************************************
@@ -269,13 +277,18 @@ command_entry commands[] = {
     ADD_COMMAND("config_get"    ,command_config_get     ,"Internal use")
     ADD_COMMAND("fuse_reset"    ,command_fuse           ,"Reset the internal fuse")
     ADD_COMMAND("signals"       ,command_signals        ,"For debugging")
-    ADD_COMMAND("alarms"        ,command_alarms         ,"Alarms [show/reset]")
+    ADD_COMMAND("alarms"        ,command_alarms         ,"Alarms [get/roll/reset]")
+    ADD_COMMAND("synthmon"      ,command_SynthMon       ,"Synthesizer status")
+    ADD_COMMAND("plot_i_prim"   ,command_plot_i_prim    ,"Plot primary current per half-cycle")
 };
 
 void eeprom_load(port_str *ptr){
     EEPROM_read_conf(confparam, PARAM_SIZE(confparam) ,0,ptr);
     i2t_set_limit(configuration.max_const_i,configuration.max_fault_i,10000);
+    update_ivo_uart();
 }
+
+
 
 void update_visibilty(void){
 
@@ -321,11 +334,76 @@ void update_visibilty(void){
             set_visibility(confparam,CONF_SIZE, "ct2_offset",VISIBLE_TRUE);
         break;
     }
-    
-    
+
 }
 
 // clang-format on
+
+/*****************************************************************************
+* Callback for invert option UART
+******************************************************************************/
+
+void update_ivo_uart(){
+    switch(configuration.ivo_uart){
+    case 0:
+        IVO_UART_Control = 0b00;
+        break;
+    case 1:
+        IVO_UART_Control = 0b10;
+        break;
+    case 10:
+        IVO_UART_Control = 0b01;
+        break;
+    case 11:
+        IVO_UART_Control = 0b11;
+        break;
+    }
+}
+
+uint8_t callback_ivoUART(parameter_entry * params, uint8_t index, port_str *ptr){
+    if(configuration.ivo_uart == 0 || configuration.ivo_uart == 1 || configuration.ivo_uart == 10 || configuration.ivo_uart == 11){
+        update_ivo_uart();   
+        return 1;
+    }else{
+        SEND_CONST_STRING("Only the folowing combinations are allowed\r\n", ptr);
+        SEND_CONST_STRING("0  = no inversion\r\n", ptr);
+        SEND_CONST_STRING("1  = rx inverted, tx not inverted\r\n", ptr);
+        SEND_CONST_STRING("10 = rx not inverted, tx inverted\r\n", ptr);
+        SEND_CONST_STRING("11 = rx and tx inverted\r\n", ptr);
+        return 0;
+    }
+}
+
+/*****************************************************************************
+* Callback if the MIDI channel is changed
+******************************************************************************/
+uint8_t callback_MchFunction(parameter_entry * params, uint8_t index, port_str *ptr){
+    if(param.mch<16){
+        params[index+1].value = &midich[param.mch].attack;
+        params[index+2].value = &midich[param.mch].decay;
+        params[index+3].value = &midich[param.mch].release;
+    }else{
+        params[index+1].value = &midich[0].attack;
+        params[index+2].value = &midich[0].decay;
+        params[index+3].value = &midich[0].release;
+    }
+    return 1;
+}
+
+/*****************************************************************************
+* Callback for mch==16
+******************************************************************************/
+uint8_t callback_MchCopyFunction(parameter_entry * params, uint8_t index, port_str *ptr){
+    if(param.mch<16) return 1;
+
+    for(uint8_t i=1;i<16;i++){
+        midich[i].attack = midich[0].attack;
+        midich[i].decay = midich[0].decay;
+        midich[i].release = midich[0].release;
+    }
+
+    return 1;
+}
 
 /*****************************************************************************
 * Callback if the offtime parameter is changed
@@ -392,12 +470,15 @@ uint8_t callback_baudrateFunction(parameter_entry * params, uint8_t index, port_
     return 1;
 }
 
+#define BURST_ON 0
+#define BURST_OFF 1
+
 /*****************************************************************************
 * Callback if a transient mode parameter is changed
 * Updates the interrupter hardware
 ******************************************************************************/
 uint8_t callback_TRFunction(parameter_entry * params, uint8_t index, port_str *ptr) {
-    
+
 	interrupter.pw = param.pw;
 	interrupter.prd = param.pwd;
     
@@ -409,8 +490,7 @@ uint8_t callback_TRFunction(parameter_entry * params, uint8_t index, port_str *p
 	return 1;
 }
 
-#define BURST_ON 0
-#define BURST_OFF 1
+
 
 /*****************************************************************************
 * Timer callback for burst mode
@@ -528,18 +608,54 @@ uint8_t callback_i2tFunction(parameter_entry * params, uint8_t index, port_str *
 /*****************************************************************************
 * Clears the terminal screen and displays the logo
 ******************************************************************************/
+static const uint8_t c_A = 9;
+static const uint8_t c_B = 15;
+static const uint8_t c_C = 35;
+
+void print_alarm(ALARMS *temp,port_str *ptr){
+    uint16_t ret;
+    char buffer[80];
+    Term_Move_cursor_right(c_A,ptr);
+    ret = snprintf(buffer, sizeof(buffer),"%u",temp->num);
+    send_buffer((uint8_t*)buffer,ret,ptr); 
+    
+    Term_Move_cursor_right(c_B,ptr);
+    ret = snprintf(buffer, sizeof(buffer),"| %u ms",temp->timestamp);
+    send_buffer((uint8_t*)buffer,ret,ptr); 
+    
+    Term_Move_cursor_right(c_C,ptr);
+    send_char('|',ptr);
+    switch(temp->alarm_level){
+        case ALM_PRIO_INFO:
+            Term_Color_Green(ptr);
+        break;
+        case ALM_PRIO_WARN:
+            Term_Color_White(ptr);
+        break;
+        case ALM_PRIO_ALARM:
+            Term_Color_Cyan(ptr);
+        break;
+        case ALM_PRIO_CRITICAL:
+            Term_Color_Red(ptr);
+        break;
+    }
+    if(temp->value==ALM_NO_VALUE){
+        ret = snprintf(buffer, sizeof(buffer)," %s\r\n",temp->message);
+    }else{
+        ret = snprintf(buffer, sizeof(buffer)," %s | Value: %i\r\n",temp->message ,temp->value);
+    }
+    send_buffer((uint8_t*)buffer,ret,ptr); 
+    Term_Color_White(ptr);
+}
+
 uint8_t command_alarms(char *commandline, port_str *ptr) {
     SKIP_SPACE(commandline);
     CHECK_NULL(commandline);
 
-    char buffer[80];
-    int ret=0;
     ALARMS temp;
     
     if (ntlibc_stricmp(commandline, "get") == 0) {
-        static const uint8_t c_A = 9;
-        static const uint8_t c_B = 15;
-        static const uint8_t c_C = 35;
+
         Term_Move_cursor_right(c_A,ptr);
         SEND_CONST_STRING("Number", ptr);
         Term_Move_cursor_right(c_B,ptr);
@@ -549,40 +665,34 @@ uint8_t command_alarms(char *commandline, port_str *ptr) {
         
         for(uint16_t i=0;i<alarm_get_num();i++){
             if(alarm_get(i,&temp)==pdPASS){
-                Term_Move_cursor_right(c_A,ptr);
-                ret = snprintf(buffer, sizeof(buffer),"%u",temp.num);
-                send_buffer((uint8_t*)buffer,ret,ptr); 
-                
-                Term_Move_cursor_right(c_B,ptr);
-                ret = snprintf(buffer, sizeof(buffer),"| %u ms",temp.timestamp);
-                send_buffer((uint8_t*)buffer,ret,ptr); 
-                
-                Term_Move_cursor_right(c_C,ptr);
-                send_char('|',ptr);
-                switch(temp.alarm_level){
-                    case ALM_PRIO_INFO:
-                        Term_Color_Green(ptr);
-                    break;
-                    case ALM_PRIO_WARN:
-                        Term_Color_White(ptr);
-                    break;
-                    case ALM_PRIO_ALARM:
-                        Term_Color_Cyan(ptr);
-                    break;
-                    case ALM_PRIO_CRITICAL:
-                        Term_Color_Red(ptr);
-                    break;
-                }
-                if(temp.value==ALM_NO_VALUE){
-                    ret = snprintf(buffer, sizeof(buffer)," %s\r\n",temp.message);
-                }else{
-                    ret = snprintf(buffer, sizeof(buffer)," %s | Value: %i\r\n",temp.message ,temp.value);
-                }
-                send_buffer((uint8_t*)buffer,ret,ptr); 
-                Term_Color_White(ptr);
+                print_alarm(&temp,ptr);
             }
         }
     	return 1;
+    }
+    if (ntlibc_stricmp(commandline, "roll") == 0) {
+        Term_Move_cursor_right(c_A,ptr);
+        SEND_CONST_STRING("Number", ptr);
+        Term_Move_cursor_right(c_B,ptr);
+        SEND_CONST_STRING("| Timestamp", ptr);
+        Term_Move_cursor_right(c_C,ptr);
+        SEND_CONST_STRING("| Message\r\n", ptr);
+        uint32_t old_num=0;
+        for(uint16_t i=0;i<alarm_get_num();i++){
+            if(alarm_get(i,&temp)==pdPASS){
+                print_alarm(&temp,ptr);
+            }
+            old_num=temp.num;
+        }
+        while(getch(ptr,50 /portTICK_RATE_MS) != 'q'){
+           if(alarm_get(alarm_get_num()-1,&temp)==pdPASS){
+                if(temp.num>old_num){
+                    print_alarm(&temp,ptr);
+                }
+                old_num=temp.num;
+            } 
+        }
+        return 1;
     }
     if (ntlibc_stricmp(commandline, "reset") == 0) {
         alarm_clear();
@@ -590,7 +700,23 @@ uint8_t command_alarms(char *commandline, port_str *ptr) {
         return 1;
     }
     
-    HELP_TEXT("Usage: alarms [get|reset]\r\n");
+    HELP_TEXT("Usage: alarms [get|roll|reset]\r\n");
+}
+
+uint8_t command_plot_i_prim(char *commandline, port_str *ptr) {
+    SKIP_SPACE(commandline);
+    CHECK_NULL(commandline);
+    
+    if (measurement_settings.num_cycles>0) {
+        //TODO print error
+        return 1;
+    } else {
+        char* temp;
+        measurement_settings.num_cycles = strtoul(commandline,&temp,10);
+        measurement_settings.sender = ptr;
+    	return 0;
+    }
+    HELP_TEXT("Usage: plot_i_prim [number of half-cycles]\r\n");
 }
 
 /*****************************************************************************
@@ -660,9 +786,14 @@ uint8_t command_tr(char *commandline, port_str *ptr) {
         return 0;
 	}
 	if (ntlibc_stricmp(commandline, "stop") == 0) {
-        interrupter.pw = 0;
-		update_interrupter();
-     
+        
+        if (xBurst_Timer != NULL) {
+			if(xTimerDelete(xBurst_Timer, 100 / portTICK_PERIOD_MS) != pdFALSE){
+			    xBurst_Timer = NULL;
+                burst_state = BURST_ON;
+            }
+        }
+
         SEND_CONST_STRING("Transient Disabled\r\n", ptr);    
  
 		interrupter.pw = 0;
@@ -769,8 +900,8 @@ uint8_t command_udkill(char *commandline, port_str *ptr) {
     }else if (ntlibc_stricmp(commandline, "get") == 0) {
         char buf[30];
         Term_Color_Red(ptr);
-        sprintf(buf, "Killbit: %u\r\n",interrupter_get_kill());
-        send_string(buf,ptr);
+        int ret = snprintf(buf,sizeof(buf), "Killbit: %u\r\n",interrupter_get_kill());
+        send_buffer((uint8_t*)buf,ret,ptr);
         Term_Color_White(ptr);
         return 1;
     }
@@ -1158,26 +1289,37 @@ uint8_t command_status(char *commandline, port_str *ptr) {
 * Initializes the teslaterm telemetry
 * Spawns the overlay task for telemetry stream generation
 ******************************************************************************/
+void init_tt(uint8_t with_chart, port_str *ptr){
+    send_gauge_config(0, GAUGE0_MIN, GAUGE0_MAX, GAUGE0_NAME, ptr);
+    send_gauge_config(1, GAUGE1_MIN, GAUGE1_MAX, GAUGE1_NAME, ptr);
+    send_gauge_config(2, GAUGE2_MIN, GAUGE2_MAX, GAUGE2_NAME, ptr);
+    send_gauge_config(3, GAUGE3_MIN, GAUGE3_MAX, GAUGE3_NAME, ptr);
+    send_gauge_config(4, GAUGE4_MIN, GAUGE4_MAX, GAUGE4_NAME, ptr);
+    send_gauge_config(5, GAUGE5_MIN, GAUGE5_MAX, GAUGE5_NAME, ptr);
+    send_gauge_config(6, GAUGE6_MIN, GAUGE6_MAX, GAUGE6_NAME, ptr);
+    
+    if(with_chart==pdTRUE){
+        send_chart_config(0, CHART0_MIN, CHART0_MAX, CHART0_OFFSET, CHART0_UNIT, CHART0_NAME, ptr);
+        send_chart_config(1, CHART1_MIN, CHART1_MAX, CHART1_OFFSET, CHART1_UNIT, CHART1_NAME, ptr);
+        send_chart_config(2, CHART2_MIN, CHART2_MAX, CHART2_OFFSET, CHART2_UNIT, CHART2_NAME, ptr);
+        send_chart_config(3, CHART3_MIN, CHART3_MAX, CHART3_OFFSET, CHART3_UNIT, CHART3_NAME, ptr);
+    }
+    start_overlay_task(ptr);
+}
+
 uint8_t command_tterm(char *commandline, port_str *ptr){
     SKIP_SPACE(commandline);
     CHECK_NULL(commandline);
     
 	if (ntlibc_stricmp(commandline, "start") == 0) {
         ptr->term_mode = PORT_TERM_TT;
-        send_gauge_config(0, GAUGE0_MIN, GAUGE0_MAX, GAUGE0_NAME, ptr);
-        send_gauge_config(1, GAUGE1_MIN, GAUGE1_MAX, GAUGE1_NAME, ptr);
-        send_gauge_config(2, GAUGE2_MIN, GAUGE2_MAX, GAUGE2_NAME, ptr);
-        send_gauge_config(3, GAUGE3_MIN, GAUGE3_MAX, GAUGE3_NAME, ptr);
-        send_gauge_config(4, GAUGE4_MIN, GAUGE4_MAX, GAUGE4_NAME, ptr);
-        send_gauge_config(5, GAUGE5_MIN, GAUGE5_MAX, GAUGE5_NAME, ptr);
-        send_gauge_config(6, GAUGE6_MIN, GAUGE6_MAX, GAUGE6_NAME, ptr);
-        
-        send_chart_config(0, CHART0_MIN, CHART0_MAX, CHART0_OFFSET, CHART0_UNIT, CHART0_NAME, ptr);
-        send_chart_config(1, CHART1_MIN, CHART1_MAX, CHART1_OFFSET, CHART1_UNIT, CHART1_NAME, ptr);
-        send_chart_config(2, CHART2_MIN, CHART2_MAX, CHART2_OFFSET, CHART2_UNIT, CHART2_NAME, ptr);
-        send_chart_config(3, CHART3_MIN, CHART3_MAX, CHART3_OFFSET, CHART3_UNIT, CHART3_NAME, ptr);
+        init_tt(pdTRUE,ptr);
+        return 1;
 
-        start_overlay_task(ptr);
+    }
+    if (ntlibc_stricmp(commandline, "mqtt") == 0) {
+        ptr->term_mode = PORT_TERM_MQTT;
+        init_tt(pdFALSE,ptr);
         return 1;
 
     }
@@ -1187,7 +1329,7 @@ uint8_t command_tterm(char *commandline, port_str *ptr){
         return 1;
 	} 
     
-    HELP_TEXT("Usage: tterm [start|stop]\r\n");
+    HELP_TEXT("Usage: tterm [start|stop|mqtt]\r\n");
 }
 
 /*****************************************************************************
@@ -1214,7 +1356,7 @@ void send_signal_state(uint8_t signal, uint8_t inverted, port_str *ptr){
     if(inverted) signal = !signal; 
     if(signal){
         Term_Color_Red(ptr);
-        SEND_CONST_STRING("true\r\n",ptr);
+        SEND_CONST_STRING("true \r\n",ptr);
         Term_Color_White(ptr);  
     }else{
         Term_Color_Green(ptr);
@@ -1222,75 +1364,96 @@ void send_signal_state(uint8_t signal, uint8_t inverted, port_str *ptr){
         Term_Color_White(ptr);
     }
 }
+void send_signal_state_wo(uint8_t signal, uint8_t inverted, port_str *ptr){
+    if(inverted) signal = !signal; 
+    if(signal){
+        Term_Color_Red(ptr);
+        SEND_CONST_STRING("true ",ptr);
+        Term_Color_White(ptr);  
+    }else{
+        Term_Color_Green(ptr);
+        SEND_CONST_STRING("false",ptr);
+        Term_Color_White(ptr);
+    }
+}
 
 uint8_t command_signals(char *commandline, port_str *ptr) {
     SKIP_SPACE(commandline);
-    char buffer[65];
-    SEND_CONST_STRING("\r\nSignal state:\r\n", ptr);
-    SEND_CONST_STRING("*************\r\n", ptr);
-    SEND_CONST_STRING("UVLO pin: ", ptr);
-    send_signal_state(UVLO_status_Status,pdTRUE,ptr);
-    
-    SEND_CONST_STRING("Sysfault driver undervoltage: ", ptr);
-    send_signal_state(sysfault.uvlo,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault temp1: ", ptr);
-    send_signal_state(sysfault.temp1,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault temp2: ", ptr);
-    send_signal_state(sysfault.temp2,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault fuse: ", ptr);
-    send_signal_state(sysfault.fuse,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault charging: ", ptr);
-    send_signal_state(sysfault.charge,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault watchdog: ", ptr);
-    send_signal_state(sysfault.watchdog,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault updating: ", ptr);
-    send_signal_state(sysfault.update,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault bus undervoltage: ", ptr);
-    send_signal_state(sysfault.bus_uv,pdFALSE,ptr);
-    SEND_CONST_STRING("Sysfault combined: ", ptr);
-    send_signal_state(system_fault_Read(),pdTRUE,ptr);
-    
-    SEND_CONST_STRING("Relay 1: ", ptr);
-    send_signal_state((relay_Read()&0b1),pdFALSE,ptr);
-    SEND_CONST_STRING("Relay 2: ", ptr);
-    send_signal_state((relay_Read()&0b10),pdFALSE,ptr);
-    SEND_CONST_STRING("Fan: ", ptr);
-    send_signal_state(fan_ctrl_Read(),pdFALSE,ptr);
-    
-    SEND_CONST_STRING("Bus status: ", ptr);
-    Term_Color_Cyan(ptr);
-    switch(telemetry.bus_status){
-        case BUS_BATT_OV_FLT:
-            SEND_CONST_STRING("Overvoltage", ptr);
-        break;
-        case BUS_BATT_UV_FLT:
-            SEND_CONST_STRING("Undervoltage", ptr);
-        break;
-        case BUS_CHARGING:
-            SEND_CONST_STRING("Charging", ptr);
-        break;
-        case BUS_OFF:
-            SEND_CONST_STRING("Off", ptr);
-        break;
-        case BUS_READY:
-            SEND_CONST_STRING("Ready", ptr);
-        break;
-        case BUS_TEMP1_FAULT:
-            SEND_CONST_STRING("Temperature fault", ptr);
-        break;
+    char buffer[80];
+    Term_Disable_Cursor(ptr);
+    Term_Erase_Screen(ptr);
+    xSemaphoreGive(ptr->term_block);
+    while(getch(ptr,250 /portTICK_RATE_MS) != 'q'){
+        xSemaphoreTake(ptr->term_block, portMAX_DELAY);
+        Term_Move_Cursor(1,1,ptr);
+        SEND_CONST_STRING("Signal state (q for quit):\r\n", ptr);
+        SEND_CONST_STRING("**************************\r\n", ptr);
+        SEND_CONST_STRING("UVLO pin: ", ptr);
+        send_signal_state(UVLO_status_Status,pdTRUE,ptr);
+        
+        SEND_CONST_STRING("Sysfault driver undervoltage: ", ptr);
+        send_signal_state(sysfault.uvlo,pdFALSE,ptr);
+        SEND_CONST_STRING("Sysfault Temp 1: ", ptr);
+        send_signal_state_wo(sysfault.temp1,pdFALSE,ptr);
+        SEND_CONST_STRING(" Temp 2: ", ptr);
+        send_signal_state(sysfault.temp2,pdFALSE,ptr);
+        SEND_CONST_STRING("Sysfault fuse: ", ptr);
+        send_signal_state_wo(sysfault.fuse,pdFALSE,ptr);
+        SEND_CONST_STRING(" charging: ", ptr);
+        send_signal_state(sysfault.charge,pdFALSE,ptr);
+        SEND_CONST_STRING("Sysfault watchdog: ", ptr);
+        send_signal_state_wo(sysfault.watchdog,pdFALSE,ptr);
+        SEND_CONST_STRING(" updating: ", ptr);
+        send_signal_state(sysfault.update,pdFALSE,ptr);
+        SEND_CONST_STRING("Sysfault bus undervoltage: ", ptr);
+        send_signal_state(sysfault.bus_uv,pdFALSE,ptr);
+        SEND_CONST_STRING("Sysfault combined: ", ptr);
+        send_signal_state(system_fault_Read(),pdTRUE,ptr);
+        
+        SEND_CONST_STRING("Relay 1: ", ptr);
+        send_signal_state_wo((relay_Read()&0b1),pdFALSE,ptr);
+        SEND_CONST_STRING(" Relay 2: ", ptr);
+        send_signal_state_wo((relay_Read()&0b10),pdFALSE,ptr);
+        SEND_CONST_STRING(" Fan: ", ptr);
+        send_signal_state(fan_ctrl_Read(),pdFALSE,ptr);
+        SEND_CONST_STRING("                                    \r", ptr);
+        SEND_CONST_STRING("Bus status: ", ptr);
+        Term_Color_Cyan(ptr);
+        switch(telemetry.bus_status){
+            case BUS_BATT_OV_FLT:
+                SEND_CONST_STRING("Overvoltage", ptr);
+            break;
+            case BUS_BATT_UV_FLT:
+                SEND_CONST_STRING("Undervoltage", ptr);
+            break;
+            case BUS_CHARGING:
+                SEND_CONST_STRING("Charging", ptr);
+            break;
+            case BUS_OFF:
+                SEND_CONST_STRING("Off", ptr);
+            break;
+            case BUS_READY:
+                SEND_CONST_STRING("Ready", ptr);
+            break;
+            case BUS_TEMP1_FAULT:
+                SEND_CONST_STRING("Temperature fault", ptr);
+            break;
+        }
+        SEND_CONST_STRING("\r\n", ptr);
+        Term_Color_White(ptr); 
+        SEND_CONST_STRING("                                    \r", ptr);
+        snprintf(buffer,sizeof(buffer),"Temp 1: %i*C Temp 2: %i*C\r\n", telemetry.temp1, telemetry.temp2);
+        send_string(buffer, ptr);
+        SEND_CONST_STRING("                                    \r", ptr);
+        snprintf(buffer,sizeof(buffer),"Vbus: %u mV Vbatt: %u mV\r\n", ADC_CountsTo_mVolts(ADC_sample_buf[DATA_VBUS]),ADC_CountsTo_mVolts(ADC_sample_buf[DATA_VBATT]));
+        send_string(buffer, ptr);
+        SEND_CONST_STRING("                                    \r", ptr);
+        snprintf(buffer,sizeof(buffer),"Ibus: %u mV\r\n\r\n", ADC_CountsTo_mVolts(ADC_sample_buf[DATA_IBUS]));
+        send_string(buffer, ptr);
+        xSemaphoreGive(ptr->term_block);
     }
-    SEND_CONST_STRING("\r\n", ptr);
-    Term_Color_White(ptr); 
-    snprintf(buffer,sizeof(buffer),"Temp 1: %i*C\r\nTemp 1: %i*C\r\n", telemetry.temp1, telemetry.temp2);
-    send_string(buffer, ptr);
-    snprintf(buffer,sizeof(buffer),"Vbus: %u mV\r\n", ADC_CountsTo_mVolts(ADC_sample_buf[DATA_VBUS]));
-    send_string(buffer, ptr);
-    snprintf(buffer,sizeof(buffer),"Vbatt: %u mV\r\n", ADC_CountsTo_mVolts(ADC_sample_buf[DATA_VBATT]));
-    send_string(buffer, ptr);
-    snprintf(buffer,sizeof(buffer),"Ibus: %u mV\r\n\r\n", ADC_CountsTo_mVolts(ADC_sample_buf[DATA_IBUS]));
-    send_string(buffer, ptr);
-    
-    
+    xSemaphoreTake(ptr->term_block, portMAX_DELAY);
+    Term_Enable_Cursor(ptr);
 	return 1;
 }
 

@@ -31,6 +31,7 @@
  */
 /* `#START USER_TYPES_AND_DEFINES` */
 #include <device.h>
+#include "cli_basic.h"
 
 #define CT_PRIMARY 0
 #define CT_SECONDARY 1
@@ -65,6 +66,14 @@
 #define BUS_COMMAND_FAULT 2
 
 volatile uint8 bus_command;
+
+typedef struct {
+    uint8 num_cycles;
+    uint8 current_cycle;
+    port_str *sender;
+} CurrentMeasurement;
+
+CurrentMeasurement measurement_settings = {};
 
 void initialize_charging(void);
 void control_precharge(void);

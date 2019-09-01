@@ -63,6 +63,8 @@ void configure_CT1(void) {
 	if (max_tr_cl_dac_val_temp > 255) {
 		max_tr_cl_dac_val_temp = 255;
 	}
+    
+    params.max_tr_cl_dac_val = round(max_tr_cl_dac_val_temp);
 
 	max_qcw_cl_dac_val_temp = (((float)configuration.max_qcw_current / (float)configuration.ct1_ratio) * configuration.ct1_burden) / (DAC_VOLTS_PER_STEP * 10);
 	if (max_qcw_cl_dac_val_temp > 255) {
@@ -106,11 +108,9 @@ void configure_ZCD_to_PWM(void) {
 
 	//initialize the ZCD counter
 	if (configuration.start_cycles == 0) {
-		ZCD_counter_WritePeriod(1);
-		ZCD_counter_WriteCompare(1);
+		num_start_cycles_Write(1);
 	} else {
-		ZCD_counter_WritePeriod(configuration.start_cycles * 2);
-		ZCD_counter_WriteCompare(4);
+		num_start_cycles_Write(configuration.start_cycles * 2);
 	}
     
     uint16_t lead_time_temp;
