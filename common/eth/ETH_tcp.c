@@ -42,6 +42,7 @@
 #include <string.h>
 
 #include "ETH.h"
+#include "FreeRTOS.h"
 
 extern uint8 ETH_socketStatus[ETH_MAX_SOCKETS];
 
@@ -364,6 +365,28 @@ void ETH_TcpPrint(uint8 socket, const char *string )
 	length = strlen(string);
 	ETH_TcpSend(socket, (uint8*) string,length, 0);
 }
+
+void ETH_Send_Checking(uint16 adress, uint8 socket, uint8* out, uint16 len, uint8* temp) {
+    const uint8 num_correct = 4;
+    const uint8 num_calls = 2*num_correct+1;
+    for (uint8 i = 0;i<num_calls;++i) {
+        ETH_Send(adress,socket,0,out,len);
+        for (uint16 byte = 0;byte<len;++byte) {
+            for (uint16 bit = 0;bit<8;++bit) {
+                temp[8*byte+bit] += (out[byte]&(1<<bit))!=0;
+            }
+        }
+    }
+    for (uint16 byte = 0;byte<len;++byte) {
+        out[byte] = 0;
+        for (uint16 bit = 0;bit<8;++bit) {
+            if (temp[8*byte+bit]>num_correct) {
+                out[byte] |= 1<<bit;
+            }
+        }
+    }
+}
+
 /* ------------------------------------------------------------------------ */
 uint16 ETH_TcpReceive(uint8 socket, uint8* buffer, uint16 len, uint8 flags)
 {
@@ -395,11 +418,19 @@ uint16 ETH_TcpReceive(uint8 socket, uint8* buffer, uint16 len, uint8 flags)
 		 * and the requested length of data.
 		 */
 		bytes = (rx_size > len) ? len : rx_size;
-		/* Read the starting memory pointer address, and endian correct */
-		ETH_Send( ETH_SREG_RX_RD, ETH_SOCKET_BASE(socket),0,(uint8*)&ptr,2);
+
+        /* Read the starting memory pointer address, and endian correct */
+        uint8 num_1_in_ptr_bit[16] = {};
+        ETH_Send_Checking(ETH_SREG_RX_RD, ETH_SOCKET_BASE(socket),(uint8*)&ptr,2, num_1_in_ptr_bit);
 		ptr = CYSWAP_ENDIAN16( ptr );
 		/* Retrieve the data bytes from the W5500 buffer */
-		ETH_Send( ptr, ETH_RX_BASE(socket),0,buffer,bytes);
+        uint16 num_msg_bits = bytes*8;
+		uint8* num_1_per_msg_bit = pvPortMalloc(num_msg_bits*sizeof(*num_1_per_msg_bit));
+        for (int i = 0;i<num_msg_bits;++i) {
+            num_1_per_msg_bit[i] = 0;
+        }
+    	ETH_Send_Checking(ptr, ETH_RX_BASE(socket),buffer,bytes, num_1_per_msg_bit);
+        vPortFree(num_1_per_msg_bit);
 		/* 
 		 * Calculate the new buffer pointer location, endian correct, and
 		 * update the pointer register within the W5500 socket registers
