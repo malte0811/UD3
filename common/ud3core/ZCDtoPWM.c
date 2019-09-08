@@ -33,7 +33,7 @@ void initialize_ZCD_to_PWM(void) {
 	PWMA_Start();
 	PWMB_Start();
 	FB_capture_Start();
-	ZCD_counter_Start();
+	//TODO? ZCD_counter_Start();
 	FB_glitch_detect_Start();
 
 	//initialize all comparators

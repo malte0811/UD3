@@ -96,6 +96,7 @@ typedef struct
 
 int16 ADC_sample[4];
 uint16 ADC_sample_buf[4];
+CurrentMeasurement measurement_settings = {};
 rms_t current_idc;
 uint8_t ADC_mux_ctl[4] = {0x05, 0x02, 0x03, 0x00};
 

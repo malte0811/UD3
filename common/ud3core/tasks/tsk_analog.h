@@ -73,7 +73,7 @@ typedef struct {
     port_str *sender;
 } CurrentMeasurement;
 
-CurrentMeasurement measurement_settings = {};
+extern CurrentMeasurement measurement_settings;
 
 void initialize_charging(void);
 void control_precharge(void);
