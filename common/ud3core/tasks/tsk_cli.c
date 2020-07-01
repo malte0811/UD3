@@ -42,8 +42,6 @@ xTaskHandle USB_Terminal_TaskHandle;
 xTaskHandle MIN_Terminal_TaskHandle[NUM_MIN_CON];
 uint8 tsk_cli_initVar = 0u;
 
-//port_str serial_port;
-port_str usb_port;
 port_str min_port[NUM_MIN_CON];
 port_str null_port;
 
@@ -179,14 +177,6 @@ void tsk_cli_Start(void) {
 /* `#END` */
 
 	if (tsk_cli_initVar != 1) {
-       
-        usb_port.type = PORT_TYPE_USB;
-        usb_port.term_mode = PORT_TERM_VT100;
-        usb_port.term_block = xSemaphoreCreateBinary();
-        usb_port.rx = xStreamBufferCreate(STREAMBUFFER_RX_SIZE,1);
-        usb_port.tx = xStreamBufferCreate(STREAMBUFFER_TX_SIZE,64);
-        xSemaphoreGive(usb_port.term_block);
-        
         if(configuration.minprot==pdTRUE){
             for(uint8_t i=0;i<NUM_MIN_CON;i++){
                 min_port[i].type = PORT_TYPE_MIN;
@@ -214,7 +204,6 @@ void tsk_cli_Start(void) {
 	 	* will call the task procedure and start execution of the task.
 	 	*/
 
-		xTaskCreate(tsk_cli_TaskProc, "USB-CLI", STACK_TERMINAL,  &usb_port, PRIO_TERMINAL, &USB_Terminal_TaskHandle);
 		tsk_cli_initVar = 1;
 	}
 }

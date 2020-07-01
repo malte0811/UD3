@@ -45,7 +45,6 @@ extern xTaskHandle MIN_Terminal_TaskHandle[NUM_MIN_CON];
 
 extern port_str min_port[NUM_MIN_CON];
 extern port_str serial_port;
-extern port_str usb_port;
 extern port_str null_port;
 
 /*

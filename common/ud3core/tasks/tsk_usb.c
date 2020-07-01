@@ -44,8 +44,28 @@
 #include "interrupter.h"
 #include "tsk_midi.h"
 #include "tsk_cli.h"
+#include "tsk_min.h"
+#include "min_id.h"
 uint8 tsk_usb_initVar;
 xTaskHandle tsk_usb_TaskHandle;
+
+#define BUFFER_SIZE 256
+uint8_t tx_buf[BUFFER_SIZE];
+uint16_t tx_buf_size = 0;
+uint16_t min_tx_space(uint8_t port){
+    return BUFFER_SIZE - tx_buf_size;
+}
+
+uint32_t min_rx_space(uint8_t port){
+    return 64 - USBMIDI_1_GetCount();
+}
+
+void min_tx_byte(uint8_t port, uint8_t byte){
+    tx_buf[tx_buf_size] = byte;
+    ++tx_buf_size;
+}
+
+
 
 /* ======================================================================== */
 void tsk_usb_Start(void) {
@@ -85,10 +105,49 @@ void tsk_usb_Enable(void) {
 		/* `#END` */
 	}
 }
+
+uint16 count;
+uint8 buffer[tsk_usb_BUFFER_LEN];
+
+void tx_usb() {
+ /* When component is ready to send more data to the PC */
+    if ((USBMIDI_1_CDCIsReady() != 0u) && (tx_buf_size > 0)) {
+        /*
+         * Read the data from the transmit queue and buffer it
+         * locally so that the data can be utilized.
+         */
+
+        /* Send data back to host */
+        rx_blink_Write(1);
+
+        for (uint16_t i = 0; i * tsk_usb_BUFFER_LEN < tx_buf_size; ++i) {
+            while (USBMIDI_1_CDCIsReady() == 0u) {
+                vTaskDelay(1);
+            }
+            uint16_t offset = i * tsk_usb_BUFFER_LEN;
+            uint16_t length = tx_buf_size - offset;
+            if (length > tsk_usb_BUFFER_LEN) {
+                length = tsk_usb_BUFFER_LEN;
+            }
+            USBMIDI_1_PutData(tx_buf + offset, length);
+            /* If the last sent packet is exactly maximum packet size, 
+             *  it shall be followed by a zero-length packet to assure the
+             *  end of segment is properly identified by the terminal.
+             */
+            if (length == tsk_usb_BUFFER_LEN) {
+                /* Wait till component is ready to send more data to the PC */
+                while (USBMIDI_1_CDCIsReady() == 0u) {
+                    vTaskDelay(1);
+                }
+                USBMIDI_1_PutData(NULL, 0u); /* Send zero-length packet to PC */
+            }
+        }
+        tx_buf_size = 0;
+    }   
+}
+
 /* ======================================================================== */
 void tsk_usb_Task(void *pvParameters) {
-	uint16 count;
-	uint8 buffer[tsk_usb_BUFFER_LEN];
     alarm_push(ALM_PRIO_INFO,warn_task_usb, ALM_NO_VALUE);
 	for (;;) {
 		/* Handle enumeration of USB port */
@@ -119,8 +178,8 @@ void tsk_usb_Task(void *pvParameters) {
 				if (count != 0u) {
 					/* insert data in to Receive FIFO */
                     rx_blink_Write(1);
-                    xStreamBufferSend(usb_port.rx, &buffer,count, 0);
 				}
+                min_poll(&min_ctx, buffer, count);
 			}
 			/*
 			 * Send a block of data ack through the USB port to the PC,
@@ -128,37 +187,32 @@ void tsk_usb_Task(void *pvParameters) {
 			 * up to the BUFFER_LEN of data (64 bytes)
 			 */
             
-            count = xStreamBufferBytesAvailable(usb_port.tx);
-
-			/* When component is ready to send more data to the PC */
-			if ((USBMIDI_1_CDCIsReady() != 0u) && (count > 0)) {
-				/*
-				 * Read the data from the transmit queue and buffer it
-				 * locally so that the data can be utilized.
-				 */
-
-                count = xStreamBufferReceive(usb_port.tx,&buffer,tsk_usb_BUFFER_LEN,0);
-				/* Send data back to host */
-                rx_blink_Write(1);
-				USBMIDI_1_PutData(buffer, count);
-
-				/* If the last sent packet is exactly maximum packet size, 
-            	 *  it shall be followed by a zero-length packet to assure the
-             	 *  end of segment is properly identified by the terminal.
-             	 */
-				if (count == tsk_usb_BUFFER_LEN) {
-					/* Wait till component is ready to send more data to the PC */
-					while (USBMIDI_1_CDCIsReady() == 0u) {
-						vTaskDelay(1);
-					}
-					USBMIDI_1_PutData(NULL, 0u); /* Send zero-length packet to PC */
-				}
-			}
+			tx_usb();
+        
+            for(uint8_t i=0;i<NUM_MIN_CON;i++){
+                if(socket_info[i].socket==SOCKET_DISCONNECTED) continue;
+                size_t eth_bytes=xStreamBufferBytesAvailable(min_port[i].tx);
+                if(eth_bytes){
+                    if (eth_bytes > 64) eth_bytes = 64;
+                    uint8_t bytes_cnt = xStreamBufferReceive(min_port[i].tx, buffer, eth_bytes, 0);
+                    if(bytes_cnt){
+                        uint8_t res=0;
+                        res = min_queue_frame(&min_ctx,i,buffer,bytes_cnt);
+                        for(uint8_t j = 0; !res && j < 255; ++j){
+                            tx_usb();
+                            vTaskDelay(1 / portTICK_PERIOD_MS);   
+                            res = min_queue_frame(&min_ctx,i,buffer,bytes_cnt);
+                            min_poll(&min_ctx, NULL, 0);
+                        }
+                    }
+                }
+            }
 		}
-        if(xStreamBufferBytesAvailable(usb_port.tx)==0 || xStreamBufferBytesAvailable(usb_port.rx)==0 || USBMIDI_1_CDCIsReady()==0){
-		    vTaskDelay(2 / portTICK_PERIOD_MS);
-        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
 	}
+   for (;;) {
+     vTaskDelay(10 / portTICK_PERIOD_MS);
+   }
 }
 /* ======================================================================== */
 /* [] END OF FILE */

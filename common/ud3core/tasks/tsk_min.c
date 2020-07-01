@@ -98,17 +98,6 @@ int average (average_buff *buffer, int new_sample){
 }
 
 
-uint16_t min_tx_space(uint8_t port){
-    return (UART_TX_BUFFER_SIZE - UART_GetTxBufferSize());
-}
-
-uint32_t min_rx_space(uint8_t port){
-    return (UART_RX_BUFFER_SIZE - UART_GetRxBufferSize());
-}
-
-void min_tx_byte(uint8_t port, uint8_t byte){
-    UART_PutChar(byte);
-}
 
 uint32_t min_time_ms(void){
   return (xTaskGetTickCount() * portTICK_RATE_MS);
@@ -249,8 +238,6 @@ void poll_UART(uint8_t* ptr){
                 bytes_cnt++;
             }
     }
-    min_poll(&min_ctx, ptr, bytes_cnt);
-    
 }
 
 uint8_t assemble_command(uint8_t cmd, char *str, uint8_t *buf){
@@ -358,20 +345,6 @@ void tsk_min_TaskProc(void *pvParameters) {
                         next_sid_flow = xTaskGetTickCount() + FLOW_RETRANSMIT_TICKS;
                         min_send_frame(&min_ctx, MIN_ID_MIDI, (uint8_t*)&min_start,1);
                         flow_ctl=1;
-                    }
-                }
-            }
-            uint16_t eth_bytes=xStreamBufferBytesAvailable(min_port[i].tx);
-            if(eth_bytes){
-                bytes_waiting+=eth_bytes;
-                bytes_cnt = xStreamBufferReceive(min_port[i].tx, buffer, LOCAL_UART_BUFFER_SIZE, 0);
-                if(bytes_cnt){
-                    uint8_t res=0;
-                    res = min_queue_frame(&min_ctx,i,buffer,bytes_cnt);
-                    while(!res){
-                        poll_UART(buffer_u);
-                        vTaskDelay(1);   
-                        res = min_queue_frame(&min_ctx,i,buffer,bytes_cnt);
                     }
                 }
             }

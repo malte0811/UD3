@@ -84,11 +84,7 @@ int main() {
 
 
 	//Starting Tasks
-    if(configuration.minprot){
-        tsk_min_Start();        //Handles UART-Hardware and queues with MIN-Protocol
-    }else{
-	    tsk_uart_Start();       //Handles UART-Hardware and queues
-    }
+    tsk_min_Start();        //Handles UART-Hardware and queues with MIN-Protocol
     
 	tsk_usb_Start();        //Handles USB-Hardware and queues
     
