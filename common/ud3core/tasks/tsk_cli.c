@@ -177,7 +177,6 @@ void tsk_cli_Start(void) {
 /* `#END` */
 
 	if (tsk_cli_initVar != 1) {
-        if(configuration.minprot==pdTRUE){
             for(uint8_t i=0;i<NUM_MIN_CON;i++){
                 min_port[i].type = PORT_TYPE_MIN;
                 min_port[i].num = i;
@@ -188,16 +187,6 @@ void tsk_cli_Start(void) {
                 xSemaphoreGive(min_port[i].term_block);
                 xTaskCreate(tsk_cli_TaskProc, "MIN-CLI", STACK_TERMINAL, &min_port[i], PRIO_TERMINAL, &MIN_Terminal_TaskHandle[i]);
             }
-        }else{
-            min_port[0].type = PORT_TYPE_SERIAL;
-            min_port[0].num = 0;
-            min_port[0].term_mode = PORT_TERM_VT100;
-            min_port[0].term_block = xSemaphoreCreateBinary();
-            min_port[0].rx = xStreamBufferCreate(STREAMBUFFER_RX_SIZE,1);
-            min_port[0].tx = xStreamBufferCreate(STREAMBUFFER_TX_SIZE,1);
-            xSemaphoreGive(min_port[0].term_block);
-            xTaskCreate(tsk_cli_TaskProc, "UART-CLI", STACK_TERMINAL, &min_port[0], PRIO_TERMINAL, &UART_Terminal_TaskHandle);
-        }
 
 		/*
 	 	* Create the task and then leave. When FreeRTOS starts up the scheduler

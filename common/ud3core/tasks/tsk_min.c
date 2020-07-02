@@ -56,9 +56,6 @@ uint8 tsk_min_initVar = 0u;
 #include "stream_buffer.h" 
 #include "ntlibc.h" 
 
-struct min_context min_ctx;
-struct _time time;
-
 /* `#END` */
 /* ------------------------------------------------------------------------ */
 /*
@@ -68,202 +65,12 @@ struct _time time;
  */
 /* `#START USER_TASK_LOCAL_CODE` */
 
-#define LOCAL_UART_BUFFER_SIZE  127     //bytes
-#define FLOW_RETRANSMIT_TICKS 50
-
-#define ITEMS			32								//Stärke des Lowpass-Filters
-
-typedef struct {
-	uint8_t i;
-	int32_t total;
-	int32_t last;
-	int32_t samples[ITEMS];
-} average_buff;
-
-average_buff sample;
-
-/*******************************************************************************************
-Makes avaraging of given values
-In	= buffer (avarage_buff) for storing samples
-IN	= new_sample (int)
-OUT = avaraged value (int) 
-********************************************************************************************/
-int average (average_buff *buffer, int new_sample){
-	buffer->total -= buffer->samples[buffer->i];
-	buffer->total += new_sample;
-	buffer->samples[buffer->i] = new_sample;
-	buffer->i = (buffer->i+1) % ITEMS;
-	buffer->last = buffer->total / ITEMS;
-	return buffer->last;
-}
-
-
-
-uint32_t min_time_ms(void){
-  return (xTaskGetTickCount() * portTICK_RATE_MS);
-}
-
-void min_reset(uint8_t port){
-    kill_accu();
-    USBMIDI_1_callbackLocalMidiEvent(0, (uint8_t*)kill_msg);   
-    alarm_push(ALM_PRIO_WARN,warn_min_reset,ALM_NO_VALUE);
-}
-
-void min_tx_start(uint8_t port){
-}
-void min_tx_finished(uint8_t port){
-}
-void time_cb(uint32_t remote_time){
-    time.remote = remote_time;
-    time.diff_raw = time.remote-l_time;
-    time.diff = average(&sample,time.diff_raw);
-    if(time.diff>1000 ||time.diff<-1000){
-        clock_set(time.remote);
-        time.resync++;   
-        //clock_reset_inc();
-    }else{
-        clock_trim(time.diff);
-    }   
-}
-
-uint8_t flow_ctl=1;
-static const uint8_t min_stop = 'x';
-static const uint8_t min_start = 'o';
-
-
-struct _socket_info socket_info[NUM_MIN_CON];
-
-void process_synth(uint8_t *min_payload, uint8_t len_payload){
-    len_payload--;
-    switch(*min_payload++){
-        case SYNTH_CMD_FLUSH:
-            if(qSID!=NULL){
-                xQueueReset(qSID);
-            }
-            break;
-        case SYNTH_CMD_SID:
-            param.synth=SYNTH_SID;
-            switch_synth(SYNTH_SID);
-            break;
-        case SYNTH_CMD_MIDI:
-            param.synth=SYNTH_MIDI;
-            switch_synth(SYNTH_MIDI);
-            break;
-        case SYNTH_CMD_OFF:
-            param.synth=SYNTH_OFF;
-            switch_synth(SYNTH_OFF);
-            break;
-  }
-}
-
-void send_command(struct min_context *ctx, uint8_t cmd, char *str){
-    uint8_t len=0;
-    uint8_t buf[40];
-    buf[0] = cmd;
-    len=strlen(str);
-    if(len>sizeof(buf)-1)len = sizeof(buf)-1;
-    memcpy(&buf[1],str,len);
-    min_queue_frame(ctx,MIN_ID_COMMAND,buf,len+1);
-}
-uint8_t transmit_features=0;
-
-void min_application_handler(uint8_t min_id, uint8_t *min_payload, uint8_t len_payload, uint8_t port)
-{
-    switch(min_id){
-        case 0 ... 9:
-            if(min_id>(NUM_MIN_CON-1)) return;
-            if(socket_info[min_id].socket==SOCKET_DISCONNECTED) return;
-            xStreamBufferSend(min_port[min_id].rx,min_payload, len_payload,1);
-            break;
-        case MIN_ID_MIDI:
-            switch(param.synth){
-                case SYNTH_OFF:
-       
-                    break;
-                case SYNTH_MIDI:
-                    process_midi(min_payload,len_payload);     
-                    break;
-                case SYNTH_SID:
-                    process_sid(min_payload, len_payload);
-                    break;
-                case SYNTH_MIDI_QCW:
-                    process_midi(min_payload,len_payload);     
-                    break;
-                case SYNTH_SID_QCW:
-                    process_sid(min_payload, len_payload);
-                    break;
-            }
-            break;
-        case MIN_ID_WD:
-                if(len_payload==4){
-                	time.remote  = ((uint32_t)min_payload[0]<<24);
-			        time.remote |= ((uint32_t)min_payload[1]<<16);
-			        time.remote |= ((uint32_t)min_payload[2]<<8);
-			        time.remote |= (uint32_t)min_payload[3];
-                    time_cb(time.remote);
-                }
-                WD_reset();
-            break;
-        case MIN_ID_SOCKET:
-            if(*min_payload>(NUM_MIN_CON-1)) return;
-            socket_info[*min_payload].socket = *(min_payload+1);
-            strncpy(socket_info[*min_payload].info,(char*)min_payload+2,sizeof(socket_info[0].info));
-            if(socket_info[*min_payload].socket==SOCKET_CONNECTED){
-                command_cls("",&min_port[*min_payload]);
-                send_string(":>", &min_port[*min_payload]);
-                if(!transmit_features){
-                    transmit_features=sizeof(version)/sizeof(char*);
-                }
-            }else{
-                min_port[*min_payload].term_mode = PORT_TERM_VT100;    
-                stop_overlay_task(&min_port[*min_payload]);   
-            }
-            break;
-        case MIN_ID_SYNTH:
-            process_synth(min_payload,len_payload);
-            break;
-    }
-}
 
 
 void poll_UART(uint8_t* ptr){
         
-    uint16_t bytes = UART_GetRxBufferSize();
-    uint16_t bytes_cnt=0;
-    if(bytes){
-        rx_blink_Write(1);
-        if (bytes > LOCAL_UART_BUFFER_SIZE) bytes = LOCAL_UART_BUFFER_SIZE;
-            while(bytes_cnt < bytes){
-                ptr[bytes_cnt] = UART_GetByte();
-                bytes_cnt++;
-            }
-    }
 }
 
-uint8_t assemble_command(uint8_t cmd, char *str, uint8_t *buf){
-    uint8_t len=0;
-    *buf = cmd;
-    buf++;
-    len=strlen(str);
-    memcpy(buf,str,len);
-    return len+1;
-}
-
-
-
-void send_command_wq(struct min_context *ctx, uint8_t cmd, char *str){
-    uint8_t len=0;
-    uint8_t buf[40];
-    buf[0] = cmd;
-    len=strlen(str);
-    if(len>sizeof(buf)-1)len = sizeof(buf)-1;
-    memcpy(&buf[1],str,len);
-    min_send_frame(ctx,MIN_ID_COMMAND,buf,len+1);
-}
-
-void min_reset_flow(void){
-    flow_ctl=0;
-}
 
 
 
@@ -281,9 +88,6 @@ void tsk_min_TaskProc(void *pvParameters) {
 	 */
 	/* `#START TASK_VARIABLES` */
     
-    uint8_t buffer[LOCAL_UART_BUFFER_SIZE];
-    uint8_t buffer_u[LOCAL_UART_BUFFER_SIZE];
-
     uint8_t bytes_cnt=0;
    
 
@@ -297,64 +101,7 @@ void tsk_min_TaskProc(void *pvParameters) {
     
 
     //Init MIN Protocol
-    min_init_context(&min_ctx, 0);
-    
-    for(uint8_t i=0;i<NUM_MIN_CON;i++){
-        socket_info[i].socket=SOCKET_DISCONNECTED;   
-        socket_info[i].old_state=SOCKET_DISCONNECTED;
-        socket_info[i].info[0] = '\0';
-    }
-    
-        
-	/* `#END` */
-    uint8_t i=0;
-    uint16_t bytes_waiting=0;
-    
-    uint32_t next_sid_flow = 0;
-    alarm_push(ALM_PRIO_INFO,warn_task_min, ALM_NO_VALUE);
-    
-    send_command_wq(&min_ctx,CMD_HELLO_WORLD, configuration.ud_name);
-    
-	for (;;) {
-
-        bytes_waiting=UART_GetRxBufferSize();
-        
-        if(transmit_features){
-            uint8_t temp=(sizeof(version)/sizeof(char*))-transmit_features;
-            min_queue_frame(&min_ctx, MIN_ID_FEATURE, (uint8_t*)version[temp],strlen(version[temp]));  
-            transmit_features--;
-        }
-        
-        for(i=0;i<NUM_MIN_CON;i++){
-        
-    		/* `#START TASK_LOOP_CODE` */
-             
-            poll_UART(buffer_u);
-            if(socket_info[i].socket==SOCKET_DISCONNECTED) goto end;   
-            
-            
-            if(param.synth==SYNTH_SID || param.synth==SYNTH_SID_QCW){
-                if(uxQueueSpacesAvailable(qSID) < 30 && flow_ctl){
-                    min_queue_frame(&min_ctx, MIN_ID_MIDI, (uint8_t*)&min_stop,1);
-                    flow_ctl=0;
-                }else if(uxQueueSpacesAvailable(qSID) > 45 && !flow_ctl){ //
-                    min_queue_frame(&min_ctx, MIN_ID_MIDI, (uint8_t*)&min_start,1);
-                    flow_ctl=1;
-                }else if(uxQueueSpacesAvailable(qSID) > 59){
-                    if(xTaskGetTickCount()>next_sid_flow){
-                        next_sid_flow = xTaskGetTickCount() + FLOW_RETRANSMIT_TICKS;
-                        min_send_frame(&min_ctx, MIN_ID_MIDI, (uint8_t*)&min_start,1);
-                        flow_ctl=1;
-                    }
-                }
-            }
-            end:;
-        }
-        if(bytes_waiting==0){
-            vTaskDelay(1);
-        }
-		/* `#END` */
-	}
+    vTaskDelete( NULL );
 }
 /* ------------------------------------------------------------------------ */
 void tsk_min_Start(void) {
