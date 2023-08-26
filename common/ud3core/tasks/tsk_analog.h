@@ -34,9 +34,6 @@
 #include "cli_basic.h"
 #include "config.h"
 
-#define CT_PRIMARY 0
-#define CT_SECONDARY 1
- 
 enum I2T {
     I2T_NORMAL,
     I2T_WARNING,
@@ -96,8 +93,8 @@ typedef struct
 /* `#END` */
 
 void tsk_analog_Start(void);
-uint32_t CT1_Get_Current(uint8_t channel);
-float CT1_Get_Current_f(uint8_t channel);
+uint32_t CT1_Get_Current();
+float CT1_Get_Current_f();
 uint16_t get_max(void);
 void i2t_set_limit(uint32_t const_current, uint32_t ovr_current, uint32_t limit_ms);
 void i2t_set_warning(uint8_t percent);

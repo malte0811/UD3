@@ -202,22 +202,14 @@ uint16_t read_driver_mv(uint16_t raw_adc){
     return driver_voltage;
 }
 
-uint32_t CT1_Get_Current(uint8_t channel) {
+uint32_t CT1_Get_Current() {
     int32_t counts = ADC_peak_GetResult16();
-	if (channel == CT_PRIMARY) {
-		return ((ADC_peak_CountsTo_mVolts(counts) * configuration.ct1_ratio) / configuration.ct1_burden) / 100;
-	} else {
-		return ((ADC_peak_CountsTo_mVolts(counts) * configuration.ct3_ratio) / configuration.ct3_burden) / 100;
-	}
+    return ((ADC_peak_CountsTo_mVolts(counts) * configuration.ct1_ratio) / configuration.ct1_burden) / 100;
 }
 
-float CT1_Get_Current_f(uint8_t channel) {
+float CT1_Get_Current_f() {
     int32_t counts = ADC_peak_GetResult16();
-	if (channel == CT_PRIMARY) {
-		return ((float)(ADC_peak_CountsTo_Volts(counts) * 10) / (float)(configuration.ct1_burden) * configuration.ct1_ratio);
-	} else {
-		return ((float)(ADC_peak_CountsTo_Volts(counts) * 10) / (float)(configuration.ct3_burden) * configuration.ct3_ratio);
-	}
+    return ((float)(ADC_peak_CountsTo_Volts(counts) * 10) / (float)(configuration.ct1_burden) * configuration.ct1_ratio);
 }
 
 void init_rms_filter(rms_t *ptr, uint16_t init_val) {
@@ -266,7 +258,7 @@ void calculate_rms(void) {
 		tt.n.avg_power.value = tt.n.batt_i.value * tt.n.bus_v.value / 10;
 	}
     
-    tt.n.primary_i.value = CT1_Get_Current(CT_PRIMARY);
+    tt.n.primary_i.value = CT1_Get_Current();
     
     if(configuration.max_dc_curr){
         param.temp_duty = configuration.max_tr_duty-pid_step(&pid_current,configuration.max_dc_curr,tt.n.batt_i.value);
@@ -303,7 +295,6 @@ void calculate_rms(void) {
 
 void initialize_analogs(void) {
 	
-	CT_MUX_Start();
     ADC_peak_Start();
 	Sample_Hold_1_Start();
 	Comp_1_Start();
@@ -338,8 +329,6 @@ void initialize_analogs(void) {
     
 
 	ADC_data_ready_StartEx(ADC_data_ready_ISR);
-
-	CT_MUX_Select(CT_PRIMARY);
 
 	init_rms_filter(&current_idc, INITIAL);
     

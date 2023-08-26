@@ -156,8 +156,6 @@ static const char * AC_set_get[] = {
     "ct2_ratio",
     "ct2_type",
     "ct2_voltage",
-    "ct3_burden",
-    "ct3_ratio",
     "d_calib",
     "ena_display",
     "ena_ext_int",

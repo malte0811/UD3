@@ -85,10 +85,8 @@ struct config_struct{
     uint8_t temp2_max;
     uint16_t ct1_ratio;
     uint16_t ct2_ratio;
-    uint16_t ct3_ratio;
     uint16_t ct1_burden;
     uint16_t ct2_burden;
-    uint16_t ct3_burden;
     uint16_t lead_time;
     uint16_t start_freq;
     uint8_t  start_cycles;
