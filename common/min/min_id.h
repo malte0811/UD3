@@ -10,13 +10,13 @@
 #define MIN_ID_FEATURE  15
 #define MIN_ID_MIDI     20
 #define MIN_ID_SID      21
+#define MIN_ID_QCW_RAMP 22
     
 #define MIN_ID_EVENT    40
 #define MIN_ID_ALARM    41
 #define MIN_ID_DEBUG    42
 #define MIN_ID_VMS      43
-#define MIN_ID_OS_INFO  44
-    
+
 #define SYNTH_CMD_FLUSH     1
 #define SYNTH_CMD_SID       2
 #define SYNTH_CMD_MIDI      3

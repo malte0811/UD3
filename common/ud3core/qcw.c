@@ -60,6 +60,7 @@ void qcw_regenerate_ramp(){
     uint32_t temp_max = param.qcw_max;
     
     if((temp_max + param.qcw_vol) > 255){
+        //temp_max -= ((temp_max + param.qcw_vol) - 255);  //Scale the max down to fit the volume
         temp_max = 255 - param.qcw_vol;  //Scale the max down to fit the volume
     }
     
@@ -99,6 +100,7 @@ void qcw_regenerate_ramp(){
             }
             
         }
+        // Not 100% necessary since stop_index is set, but otherwise `ramp draw` shows incorrect data
         for (uint16_t i = max_active; i < QCW_RAMP_SAMPLES; ++i) {
            ramp.data[i] = 0;
         }
@@ -142,6 +144,11 @@ void qcw_ramp_line(uint16_t x0,uint8_t y0,uint16_t x1, uint8_t y1){
 	}
 }
 
+void qcw_ramp_from_min(uint8_t* data, uint8_t num_bytes) {
+   // Format is 2 bytes for offset, then num_bytes-1 bytes of raw ramp data to copy to that offset
+   // TODO how to prevent this running during QCW pulse?
+   uint16_t const offset = data[0] | (data[1] << 8);
+}
 
 void qcw_ramp_visualize(CHART *chart, TERMINAL_HANDLE * handle){
     for(uint16_t i = 0; i<sizeof(ramp.data)-1;i++){
