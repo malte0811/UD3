@@ -1753,6 +1753,7 @@
       <Data key="4107d955-094b-44ec-b878-732d04118082" value="ZCD_Debug" />
       <Data key="6400ba9d-054d-4648-a80b-c36ed9080f64" value="CT_SEC" />
       <Data key="6533b513-81b1-46af-8e19-d98fd9cc0e1c/16a808f6-2e13-45b9-bce0-b001c8655113" value="ADC_peak_Bypass" />
+      <Data key="7032b027-bddc-4ad3-a771-6f617c94d2f5" value="DEBUG_ILIM" />
       <Data key="22863ebe-a37b-476f-b252-6e49a8c00b12" value="SDA_1" />
       <Data key="64771f96-2472-47b5-997d-0adfb7ac011f" value="dcdc_ena" />
       <Data key="183169da-5db0-456e-85f3-54d1ef93695d" value="TP6" />
@@ -1763,6 +1764,8 @@
       <Data key="a33d362e-32d3-4bd2-a4e3-6ca8b8e69c1f" value="LED_OCD" />
       <Data key="a2257d0d-8c7b-45f0-af4f-8a67896d6b11" value="ZCDB" />
       <Data key="b1db877c-9dfd-4400-a351-2f7b40c83b5f" value="TP2" />
+      <Data key="beca5e2d-f70f-4900-a4db-7eca1ed3126e/8b77a6c4-10a0-4390-971c-672353e2a49c" value="USBUART_1_Dm" />
+      <Data key="beca5e2d-f70f-4900-a4db-7eca1ed3126e/618a72fc-5ddd-4df5-958f-a3d55102db42" value="USBUART_1_Dp" />
       <Data key="d5c222a8-f340-47f3-b3e2-82b5110cc0f6" value="TRIG" />
       <Data key="d1817f9f-1083-43a0-873b-9935f73c2a53" value="TP4" />
       <Data key="df864acb-3838-45e6-8b11-23d8f35057fe" value="Relay2" />
@@ -5025,6 +5028,11 @@
     <Group key="299df0a5-d2ed-4b72-b3d7-ae900bca29ed">
       <Group key="0">
         <Data key="Port Format" value="2,5" />
+      </Group>
+    </Group>
+    <Group key="4107d955-094b-44ec-b878-732d04118082">
+      <Group key="0">
+        <Data key="Port Format" value="12,2" />
       </Group>
     </Group>
     <Group key="6400ba9d-054d-4648-a80b-c36ed9080f64">
