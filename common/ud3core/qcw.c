@@ -23,16 +23,15 @@
 */
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include "qcw.h"
-#include "interrupter.h"
 #include "hardware.h"
-#include "SignalGenerator.h"
 
 #include "ZCDtoPWM.h"
 #include "helper/teslaterm.h"
-#include "tasks/tsk_overlay.h"
-#include "tasks/tsk_midi.h"
+#include "min_id.h"
+#include "tasks/tsk_min.h"
 #include "telemetry.h"
 
 ramp_params volatile ramp;
@@ -52,69 +51,70 @@ void qcw_handle(){
 }
 
 void qcw_regenerate_ramp(){
+    if(!ramp.changed){ return; }
+    uint8_t modulation_high = pdFALSE;
+    uint32_t modulation_period = roundf((10.0f / (float)param.qcw_freq) / 0.00025f);  //Frequency in tenths
     
-    uint8_t toggle =0;
-    float divider = (10.0f / (float)param.qcw_freq) / 0.00025f;  //Frequency in tenths
-    uint32_t div = roundf(divider);
-    
-    uint32_t temp_max = param.qcw_max;
-    
-    if((temp_max + param.qcw_vol) > 255){
-        //temp_max -= ((temp_max + param.qcw_vol) - 255);  //Scale the max down to fit the volume
-        temp_max = 255 - param.qcw_vol;  //Scale the max down to fit the volume
-    }
-    
-    if(ramp.changed){
-        float ramp_val = param.qcw_offset;
+    uint32_t ramp_max = param.qcw_max;
+    // Clamp the max down to fit the volume
+    if((ramp_max + param.qcw_vol) > 255) { ramp_max = 255 - param.qcw_vol;  }
 
-        uint16_t pw = param.qcw_pw;
-        if (pw > configuration.max_qcw_pw) {
-           pw = configuration.max_qcw_pw;
+    uint16_t pw = param.qcw_pw;
+    if (pw > configuration.max_qcw_pw) { pw = configuration.max_qcw_pw; }
+
+    uint32_t max_active = (pw*10)/MIDI_ISR_US;
+    if (max_active > sizeof(ramp.data)) { max_active = sizeof(ramp.data); }
+    ramp.stop_index = max_active;
+
+    float ramp_increment = param.qcw_ramp / 100.0;
+    float ramp_val = param.qcw_offset;
+    for(uint16_t i=0;i<max_active;i++){
+        ramp.data[i]=floorf(ramp_val);
+        if(i>param.qcw_holdoff){
+            ramp_val += ramp_increment;
+            if(ramp_val > ramp_max) { ramp_val = ramp_max; }
+
+            if(param.qcw_vol > 0){
+                if((i % modulation_period) == 0){
+                    modulation_high = !modulation_high;
+                }
+                if(modulation_high){
+                    ramp.data[i] += param.qcw_vol;
+                }
+            }   
         }
-        uint32_t max_active = (pw*10)/MIDI_ISR_US;
-        if (max_active > sizeof(ramp.data)) max_active = sizeof(ramp.data);
-        
-        ramp.stop_index = max_active;
-        
-        float ramp_increment = param.qcw_ramp / 100.0;
-      
-        for(uint16_t i=0;i<max_active;i++){
-            if(ramp_val > temp_max) ramp_val = temp_max;
-            
-            ramp.data[i]=floorf(ramp_val);
-            if(i>param.qcw_holdoff){
-                ramp_val += ramp_increment;
-             
-                if(param.qcw_vol > 0){
-                    
-			        if((i % div) == 0){
-				        toggle = toggle == 0 ? 1 : 0;
-			        }
-			        if(toggle == 1){
-                        uint32_t dat = ramp.data[i];
-                        dat += param.qcw_vol;
-                        if(dat > 255) dat = 255;
-                        ramp.data[i] = dat;
-			        }
-                }   
-            }
-            
-        }
-        // Not 100% necessary since stop_index is set, but otherwise `ramp draw` shows incorrect data
-        for (uint16_t i = max_active; i < QCW_RAMP_SAMPLES; ++i) {
-           ramp.data[i] = 0;
-        }
-        ramp.changed = pdFALSE;
     }
+    // Not 100% necessary since stop_index is set, but otherwise `ramp draw` shows incorrect data
+    for (uint16_t i = max_active; i < QCW_RAMP_SAMPLES; ++i) {
+       ramp.data[i] = 0;
+    }
+    ramp.changed = pdFALSE;
+
+    uint32_t max_to_send = (configuration.max_qcw_pw*10)/MIDI_ISR_US;
+    uint8_t ramp_byte_per_frame = 200;
+    uint8_t payload_length = 2 + ramp_byte_per_frame;
+    uint8_t* temp_buffer = pvPortMalloc(payload_length);
+    for (uint16_t next_byte = 0; next_byte < max_to_send; next_byte += ramp_byte_per_frame) {
+        bool is_last = next_byte + ramp_byte_per_frame >= max_to_send;
+        uint8_t ramp_bytes_this_frame = is_last ? max_to_send - next_byte : ramp_byte_per_frame;
+        temp_buffer[0] = (next_byte >> 8) | (is_last << 7);
+        temp_buffer[1] = next_byte & 0xff;
+        memcpy(temp_buffer + 2, ramp.data + next_byte, ramp_bytes_this_frame);
+        min_queue_frame(&min_ctx, MIN_ID_QCW_RAMP, temp_buffer, ramp_bytes_this_frame + 2);
+    }
+    printf("Sent ramp update\n");
+    vPortFree(temp_buffer);
 }
 
 void qcw_cmd_midi_pulse(int32_t volume, int32_t frequencyTenths){
     param.qcw_freq = frequencyTenths;
-    if(!QCW_enable_Control){
+    printf("Set: %d %d\n", volume, frequencyTenths);
+    //TODO
+    //if(!QCW_enable_Control){
         ramp.changed = pdTRUE;  
         qcw_regenerate_ramp();
         qcw_start();
-    }
+    //}
 }
 
 void qcw_ramp_point(uint16_t x,uint8_t y){

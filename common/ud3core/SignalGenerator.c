@@ -21,6 +21,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <cytypes.h>
@@ -249,6 +250,7 @@ static void SigGen_setVoiceParams(uint32_t voice, uint32_t enabled, int32_t puls
     //check if voice is switching on
     uint32_t willBeOn = enabled && (volume != 0) && (frequencyTenths != 0);
     
+    if (willBeOn) printf("Voice: oldOn %d newOn %d\n", !taskData->voice[voice].enabled, willBeOn);
     //is the voice switching on?
     if(!taskData->voice[voice].enabled && willBeOn){
         //yes => reset the timebase for the note

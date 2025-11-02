@@ -6,6 +6,7 @@
  */
 
 #include <math.h>
+#include <stdio.h>
 
 #include "MidiProcessor.h"
 #include "SignalGenerator.h"
@@ -111,7 +112,6 @@ void MidiProcessor_processCmd(uint32_t cable, uint32_t channel, uint32_t cmd, ui
         //send noteOff event to mapper
         
     }else if(cmd == MIDI_CMD_NOTE_ON){
-        
         if(param2 > 0 && channelDescriptors[channel].parameters[MIDI_CC_VOLUME] > 0  && channelDescriptors[channel].stereoVolume > 0 ){  //is the note volume > 0?
             //yes, send noteOn event to the mapper
             for(uint32_t i = 0; i < SIGGEN_OUTPUTCOUNT; i++){
