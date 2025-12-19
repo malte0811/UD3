@@ -63,8 +63,8 @@ SOURCE_FILES += $(wildcard ${CORE_DIR}/vms/*.c)
 SOURCE_FILES += $(wildcard ${CORE_DIR}/Modules/*/*.c)
 
 
-CFLAGS := -ggdb3 -Os -DprojCOVERAGE_TEST=0 -std=gnu11
-LDFLAGS := -ggdb3 -Os -pthread -lpcap -lm -zmuldefs
+CFLAGS := -ggdb3 -DprojCOVERAGE_TEST=0 -std=gnu11
+LDFLAGS := -ggdb3 -pthread -lpcap -lm
 
 OBJ_FILES = $(SOURCE_FILES:%.c=$(BUILD_DIR)/%.o)
 

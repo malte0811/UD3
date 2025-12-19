@@ -70,7 +70,7 @@ void tsk_sim(void *pvParameters) {
 	}
 }
 
-void isr_synth() {
+void sim_isr_synth() {
     uint32_t r = SG_Timer_ReadCounter();
 	for(int i=0;i<20;i++){
 		clock_tick();
@@ -85,7 +85,7 @@ void isr_synth() {
 void tsk_sim_isr(void *pvParameters) {
 	while(1){
 	
-		isr_synth();
+		sim_isr_synth();
 		vTaskDelay(1);
 	}
 }

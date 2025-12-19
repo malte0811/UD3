@@ -327,5 +327,7 @@ uint8_t EEPROM_1_ReadByte(uint16 address) ;
 void interrupterTimebase_WriteControlRegister(uint8_t value);
 uint8_t interrupterTimebase_ReadControlRegister();
 uint8_t interrupterTimebase_ReadStatusRegister();
+void vTaskEnterCritical();
+void vTaskExitCritical();
 
 #endif
