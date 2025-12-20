@@ -31,6 +31,7 @@
 #include "ZCDtoPWM.h"
 #include "helper/teslaterm.h"
 #include "min_id.h"
+#include "tasks/tsk_analog.h"
 #include "tasks/tsk_min.h"
 #include "telemetry.h"
 
@@ -38,16 +39,19 @@ ramp_params volatile ramp;
 
 TimerHandle_t xQCW_Timer;
 
-void qcw_handle(){
-    if(ramp.index >= ramp.stop_index){
-        qcw_modulate(0);
-        QCW_enable_Control = 0;
-        params.pwmb_psb_val = 0;
-        ramp.index = 0;
-    }else{
-        qcw_modulate(ramp.data[ramp.index]);
-        ramp.index++;
-    }
+void qcw_handle() {
+	if (ramp.index >= ramp.stop_index) {
+		qcw_modulate(0);
+		QCW_enable_Control = 0;
+		params.pwmb_psb_val = 0;
+		ramp.index = 0;
+        // TODO this is in a ISR, isn't it... Need to call it from somewhere else, probably based on
+        // falling_edge(QCW_enable_Control)
+        tsk_analog_on_qcw_pulse_end();
+	} else {
+		qcw_modulate(ramp.data[ramp.index]);
+		ramp.index++;
+	}
 }
 
 void qcw_regenerate_ramp(){
@@ -169,7 +173,8 @@ void qcw_start(){
     ramp.index=0;
 	//the next stuff is time sensitive, so disable interrupts to avoid glitches
 	CyGlobalIntDisable;
-	//now enable the QCW interrupter
+    tsk_analog_on_qcw_pulse_start();
+	// now enable the QCW interrupter
 	QCW_enable_Control = 1;
 	params.pwmb_psb_val = params.pwm_top - params.pwmb_start_psb_val;
 	CyGlobalIntEnable;

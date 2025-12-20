@@ -50,6 +50,8 @@ void CT_MUX_Select(uint8_t val){
 	sim_hw_CT_Mux=val;
 }
 
+void Amux_Ctrl_Write(uint8_t control) {}
+
 
 uint8_t sim_hw_Relay1 = 0;
 uint8_t sim_hw_Relay2 = 0;
