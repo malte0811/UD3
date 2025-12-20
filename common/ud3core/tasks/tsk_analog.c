@@ -98,6 +98,7 @@ rms_t current_idc;
 rms_t voltage_bus;
 rms_t voltage_batt;
 
+// Maps from order of fields in adc_sample_t to order of MUX inputs
 uint8_t ADC_mux_ctl[4] = {0x01, 0x02, 0x03, 0x00};
 static uint32_t drive_top_r_corrected = DRIVEV_R_TOP;
 
@@ -114,9 +115,6 @@ static uint32_t vdriver_raw;
 
 static bool log_as_qcw = false;
 static bool is_last_qcw = false;
-
-static uint8 MUX_DMA_Chan;
-static uint8 MUX_DMA_TD[1];
 
 CY_ISR(ADC_data_ready_ISR) {
     if(ADC_active_sample_buf==ADC_sample_buf_0 ){
@@ -190,8 +188,7 @@ void calculate_rms(void) {
 	if (log_as_qcw) {
 		min_queue_frame(&min_ctx, 44, (uint8_t *)ADC_active_sample_buf, sizeof(ADC_sample_buf_0));
 		if (is_last_qcw) {
-			CyDmaChEnable(MUX_DMA_Chan, 1);
-            CyDmaTdSetAddress(MUX_DMA_TD[0], LO16((uint32)ADC_mux_ctl), LO16((uint32)Amux_Ctrl_Control_PTR));
+            MUX_Only_VBus_Write(0);
 			log_as_qcw = false;
 			is_last_qcw = false;
 		}
@@ -258,6 +255,9 @@ void initialize_analogs(void) {
 	/* Variable declarations for MUX_DMA */
 	/* Move these variable declarations to the top of the function */
 	/* DMA Configuration for MUX_DMA */
+    uint8 MUX_DMA_Chan;
+    uint8 MUX_DMA_TD[1];
+
 	MUX_DMA_Chan = MUX_DMA_DmaInitialize(MUX_DMA_BYTES_PER_BURST, MUX_DMA_REQUEST_PER_BURST, HI16(MUX_DMA_SRC_BASE), HI16(MUX_DMA_DST_BASE));
 	MUX_DMA_TD[0] = CyDmaTdAllocate();
 	CyDmaTdSetConfiguration(MUX_DMA_TD[0], 4, MUX_DMA_TD[0], CY_DMA_TD_INC_SRC_ADR);
@@ -459,9 +459,7 @@ void tsk_analog_Start(void) {
 }
 
 void tsk_analog_on_qcw_pulse_start() {
-	CyDmaChDisable(MUX_DMA_Chan);
-	// Vbus is at 1
-	Amux_Ctrl_Write(1);
+    MUX_Only_VBus_Write(1);
 	log_as_qcw = true;
 	is_last_qcw = false;
 }

@@ -45,8 +45,6 @@ void qcw_handle() {
 		QCW_enable_Control = 0;
 		params.pwmb_psb_val = 0;
 		ramp.index = 0;
-        // TODO this is in a ISR, isn't it... Need to call it from somewhere else, probably based on
-        // falling_edge(QCW_enable_Control)
         tsk_analog_on_qcw_pulse_end();
 	} else {
 		qcw_modulate(ramp.data[ramp.index]);

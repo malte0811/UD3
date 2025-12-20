@@ -24,6 +24,7 @@ void ADC_Start();
 
 
 void CT_MUX_Select(uint8_t val);
+void MUX_Only_VBus_Write(uint8_t val);
 void Amux_Ctrl_Write(uint8_t control);
 
 
