@@ -36,18 +36,68 @@
 #include "tasks/tsk_min.h"
 #include "telemetry.h"
 
+#define QCW_CORRECT_LINEAR 0
+#define QCW_CORRECT_VOLTAGE 1
+#define QCW_CORRECT_POWER 2
+// See scripts/generate_cosine_correction.py
+static uint8_t equiv_voltage[256] = {
+    0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6, 7, 8, 8, 9, 10, 10, 11, 11, 12, 13, 13, 14, 15, 15, 16, 17, 17, 18, 19, 19, 20, 20,
+    21, 22, 22, 23, 24, 24, 25, 26, 26, 27, 28, 28, 29, 29, 30, 31, 31, 32, 33, 33, 34, 35, 35, 36, 37, 37, 38, 39, 39,
+    40, 41, 41, 42, 43, 43, 44, 44, 45, 46, 46, 47, 48, 48, 49, 50, 50, 51, 52, 52, 53, 54, 54, 55, 56, 57, 57, 58, 59,
+    59, 60, 61, 61, 62, 63, 63, 64, 65, 65, 66, 67, 68, 68, 69, 70, 70, 71, 72, 72, 73, 74, 75, 75, 76, 77, 77, 78, 79,
+    80, 80, 81, 82, 82, 83, 84, 85, 85, 86, 87, 88, 88, 89, 90, 91, 91, 92, 93, 94, 94, 95, 96, 97, 97, 98, 99, 100,
+    101, 101, 102, 103, 104, 104, 105, 106, 107, 108, 108, 109, 110, 111, 112, 113, 113, 114, 115, 116, 117, 118, 118,
+    119, 120, 121, 122, 123, 124, 125, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 136, 137, 138, 139,
+    140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 162, 163, 164,
+    165, 166, 168, 169, 170, 171, 173, 174, 175, 177, 178, 180, 181, 183, 184, 186, 187, 189, 190, 192, 194, 195, 197,
+    199, 201, 203, 205, 207, 209, 212, 214, 217, 220, 223, 226, 230, 235, 241, 255
+};
+static uint8_t equiv_power[256] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4,
+    4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12, 12, 13, 13, 13,
+    14, 14, 14, 15, 15, 16, 16, 16, 17, 17, 18, 18, 19, 19, 19, 20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26,
+    27, 27, 28, 28, 29, 29, 30, 30, 31, 32, 32, 33, 33, 34, 34, 35, 36, 36, 37, 37, 38, 39, 39, 40, 41, 41, 42, 43, 43,
+    44, 45, 45, 46, 47, 48, 48, 49, 50, 50, 51, 52, 53, 53, 54, 55, 56, 57, 57, 58, 59, 60, 61, 61, 62, 63, 64, 65, 66,
+    67, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94,
+    96, 97, 98, 99, 100, 101, 103, 104, 105, 106, 108, 109, 110, 111, 113, 114, 115, 117, 118, 120, 121, 122, 124, 125,
+    127, 128, 130, 131, 133, 135, 136, 138, 140, 141, 143, 145, 147, 149, 150, 152, 154, 156, 158, 160, 163, 165, 167,
+    169, 172, 174, 177, 179, 182, 185, 188, 191, 194, 198, 201, 205, 210, 214, 220, 226, 235, 255
+};
+
 ramp_params volatile ramp;
 
 TimerHandle_t xQCW_Timer;
 
-void qcw_handle(){
-    if(ramp.index >= ramp.stop_index){
+static uint8_t shift_for_relative_voltage(uint8_t relative_voltage) {
+    if (configuration.qcw_correction == QCW_CORRECT_LINEAR) {
+        return relative_voltage;
+    } else if (configuration.qcw_correction == QCW_CORRECT_VOLTAGE) {
+        return equiv_voltage[relative_voltage];
+    } else /*if (configuration.qcw_correction == QCW_CORRECT_POWER)*/ {
+        return equiv_power[relative_voltage];
+    }
+}
+
+static void qcw_modulate(uint8_t relative_voltage){
+    uint8_t relative_shift = shift_for_relative_voltage(relative_voltage);
+    //linearize modulation value based on fb_filter_out period
+	uint8_t shift_period = (((uint16_t) relative_shift) * (params.pwm_top - fb_filter_out)) >> 8;
+	//assign new modulation value to the params.pwmb_psb_val ram
+	if ((shift_period + params.pwmb_start_psb_val) > (params.pwmb_start_prd - 4)) {
+		params.pwmb_psb_val = 4;
+	} else {
+		params.pwmb_psb_val = params.pwm_top - (shift_period + params.pwmb_start_psb_val);
+	}
+}
+
+void qcw_handle() {
+    if (ramp.index >= ramp.stop_index) {
         qcw_modulate(0);
         QCW_enable_Control = 0;
         params.pwmb_psb_val = 0;
         ramp.index = 0;
         tsk_analog_on_qcw_pulse_end();
-    }else{
+    } else {
         qcw_modulate(ramp.data[ramp.index]);
         ramp.index++;
     }
@@ -195,17 +245,6 @@ void qcw_start(){
 	QCW_enable_Control = 1;
 	params.pwmb_psb_val = params.pwm_top - params.pwmb_start_psb_val;
 	CyGlobalIntEnable;
-}
-
-void qcw_modulate(uint16_t val){
-    //linearize modulation value based on fb_filter_out period
-	uint16_t shift_period = (val * (params.pwm_top - fb_filter_out)) >> 8;
-	//assign new modulation value to the params.pwmb_psb_val ram
-	if ((shift_period + params.pwmb_start_psb_val) > (params.pwmb_start_prd - 4)) {
-		params.pwmb_psb_val = 4;
-	} else {
-		params.pwmb_psb_val = params.pwm_top - (shift_period + params.pwmb_start_psb_val);
-	}
 }
 
 void qcw_stop(){

@@ -32,6 +32,7 @@
 #include "TTerm.h"
 #include "helper/teslaterm.h"
 
+// One sample corresponds to 125µs (8kHz update rate)
 #define QCW_RAMP_SAMPLES (400)
 
 extern bool qcw_ramp_changed;
@@ -49,7 +50,6 @@ extern ramp_params volatile ramp;
 
 
 void qcw_start();
-void qcw_modulate(uint16_t val);
 void qcw_stop();
 void qcw_regenerate_ramp();
 void qcw_handle();   

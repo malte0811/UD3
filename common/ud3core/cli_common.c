@@ -114,6 +114,7 @@ void init_config(){
     configuration.start_cycles = 3;
     configuration.max_tr_duty = 100;
     configuration.max_qcw_duty = 350;
+    configuration.qcw_correction = 0;
     configuration.temp1_setpoint = 30;
     configuration.pid_temp_set = 45;
     configuration.pid_temp_mode = 0;
@@ -225,10 +226,8 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"watchdog_timeout", configuration.watchdog_timeout, 1      ,10000  ,0      ,callback_ConfigFunction     ,"Watchdog timeout [ms]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_tr_pw"       , configuration.max_tr_pw       , 0      ,10000  ,0      ,callback_ConfigFunction     ,"Maximum TR PW [uSec]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_tr_prf"      , configuration.max_tr_prf      , 0      ,3000   ,0      ,callback_ConfigFunction     ,"Maximum TR frequency [Hz]")
-    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_pw"      , configuration.max_qcw_pw      , 0      ,5000   ,100    ,callback_ConfigFunction     ,"Maximum QCW PW [ms]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_tr_current"  , configuration.max_tr_current  , 0      ,8000   ,0      ,callback_TTupdateFunction   ,"Maximum TR current [A]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"min_tr_current"  , configuration.min_tr_current  , 0      ,8000   ,0      ,callback_ConfigFunction     ,"Minimum TR current [A]")
-    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_current" , configuration.max_qcw_current , 0      ,8000   ,0      ,callback_TTupdateFunction   ,"Maximum QCW current [A]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"temp1_max"       , configuration.temp1_max       , 0      ,100    ,0      ,callback_TTupdateFunction   ,"Max temperature 1 [*C]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"temp2_max"       , configuration.temp2_max       , 0      ,100    ,0      ,NULL                        ,"Max temperature 2 [*C]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"ct1_ratio"       , configuration.ct1_ratio       , 1      ,5000   ,0      ,callback_TTupdateFunction   ,"CT1 (feedback) [N Turns]")
@@ -243,7 +242,6 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"start_freq"      , configuration.start_freq      , 0      ,5000   ,10     ,callback_ConfigFunction     ,"Resonant freq [kHz]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"start_cycles"    , configuration.start_cycles    , 0      ,20     ,0      ,callback_ConfigFunction     ,"Start Cyles [N]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_tr_duty"     , configuration.max_tr_duty     , 1      ,500    ,10     ,callback_ConfigFunction     ,"Max TR duty cycle [%]")
-    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_duty"    , configuration.max_qcw_duty    , 1      ,500    ,10     ,callback_ConfigFunction     ,"Max QCW duty cycle [%]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"temp1_setpoint"  , configuration.temp1_setpoint  , 0      ,100    ,0      ,NULL                        ,"Setpoint for fan [*C]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"pid_temp_set"    , configuration.pid_temp_set    , 0      ,100    ,0      ,NULL                        ,"PID temp setpoint")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"pid_temp_mode"   , configuration.pid_temp_mode   , 0      ,4      ,0      ,NULL                        ,"PID temp mode  0=disabled 1=PID3_Temp1 2=PID4_Temp1 3=PID3_Temp2 4=PID4_Temp2")
@@ -259,7 +257,6 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"ivo_uart"        , configuration.ivo_uart        , 0      ,11     ,0      ,callback_ivoUART            ,"[RX][TX] 0=not inverted 1=inverted")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"r_bus"           , configuration.r_top           , 100    ,1000000,1000   ,callback_TTupdateFunction   ,"Series resistor of voltage input [kOhm]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"ena_ext_int"     , configuration.ext_interrupter , 0      ,2      ,0      ,callback_ext_interrupter    ,"Enable external interrupter 2=inverted")
-    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"qcw_coil"        , configuration.is_qcw          , 0      ,1      ,0      ,NULL                        ,"Is QCW 1=true 0=false")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"pca9685"         , configuration.pca9685         , 0      ,1      ,0      ,NULL                        ,"0=off 1=on")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_fb_errors"   , configuration.max_fb_errors   , 0      ,60000  ,0      ,NULL                        ,"0=off, number of feedback errors per second to sysfault")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"ntc_b"           , configuration.ntc_b           , 0      ,10000  ,0      ,callback_ntc                ,"NTC beta [k]")
@@ -278,6 +275,12 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"comp_sustain"    , configuration.compressor_sustain  , 0      ,255    ,0      ,NULL                    ,"Compressor Sustain Setting")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"comp_release"    , configuration.compressor_release  , 0      ,255    ,0      ,NULL                    ,"Compressor Release Setting")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"comp_dutyOffset" , configuration.compressor_maxDutyOffset  , 0      ,255    ,0      ,NULL              ,"Maximum Dutycycle offset before hard limit")
+
+    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"qcw_coil"        , configuration.is_qcw          , 0      ,1      ,0      ,NULL                        ,"Is QCW 1=true 0=false")
+    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_duty"    , configuration.max_qcw_duty    , 1      ,500    ,10     ,callback_ConfigFunction     ,"Max QCW duty cycle [%]")
+    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_current" , configuration.max_qcw_current , 0      ,8000   ,0      ,callback_TTupdateFunction   ,"Maximum QCW current [A]")
+    ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_pw"      , configuration.max_qcw_pw      , 0      ,5000   ,100    ,callback_ConfigFunction     ,"Maximum QCW PW [ms]")
+    ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_correction"  , configuration.qcw_correction  , 0      ,2      ,0      ,NULL                        ,"0: linear, 1: sine, 2: sine2")
 };
 
    
