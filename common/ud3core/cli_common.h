@@ -78,11 +78,8 @@ struct config_struct{
     uint16_t watchdog_timeout;
     uint16_t max_tr_pw;
     uint16_t max_tr_prf;
-    // Unit: 10 us
-    uint16_t max_qcw_pw;
     uint16_t max_tr_current;
     uint16_t min_tr_current;
-    uint16_t max_qcw_current;
     uint8_t temp1_max;
     uint8_t temp2_max;
     uint16_t ct1_ratio;
@@ -93,7 +90,6 @@ struct config_struct{
     uint16_t start_freq;
     uint8_t  start_cycles;
     uint16_t max_tr_duty;
-    uint16_t max_qcw_duty;
     uint16_t temp1_setpoint;
     uint16_t temp2_setpoint;
     uint16_t pid_temp_set;
@@ -113,7 +109,6 @@ struct config_struct{
     uint16_t chargedelay;
     uint8_t ivo_uart;
     uint8_t ext_interrupter;
-    uint8_t is_qcw;
     uint8_t pca9685;
     uint16_t max_fb_errors;
     uint16_t ntc_b;
@@ -125,6 +120,13 @@ struct config_struct{
     uint8_t hw_rev;
     uint8_t autostart;
     uint8_t min_fb_current;
+
+    uint8_t is_qcw;
+    // Unit: 10 us
+    uint16_t max_qcw_pw;
+    uint16_t max_qcw_current;
+    uint16_t max_qcw_duty;
+    uint8_t qcw_correction;
     
     uint8_t SigGen_minOtOffset;
     
