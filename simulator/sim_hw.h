@@ -1,6 +1,6 @@
 #ifndef SIM_HW_H
 #define SIM_HW_H
-
+#include "cytypes.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -16,11 +16,11 @@ float ADC_peak_CountsTo_Volts(int32_t counts);
 int32_t ADC_CountsTo_mVolts(int32_t counts);
 float ADC_therm_CountsTo_Volts(int32_t counts);
 
-void CT_MUX_Start();
-void ADC_peak_Start();
-void Sample_Hold_1_Start();
-void Comp_1_Start();
-void ADC_Start();
+void CT_MUX_Start(void);
+void ADC_peak_Start(void);
+void Sample_Hold_1_Start(void);
+void Comp_1_Start(void);
+void ADC_Start(void);
 
 
 void CT_MUX_Select(uint8_t val);
@@ -41,29 +41,17 @@ void OnTimeCounter_WriteCounter(uint32_t val);
 uint8_t no_fb_reg_Read();
 
 
-#define ADC_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define Ch1_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define Ch2_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define Ch3_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define Ch4_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define int1_dma_DmaInitialize(p1, p2, p3, p4) 0
-#define ram_to_filter_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define filter_to_fram_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define FBC_to_ram_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define PWMA_init_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define PWMB_init_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define QCW_CL_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define TR1_CL_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define fram_to_PWMA_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define PSBINIT_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define PWMB_PSB_DMA_DmaInitialize(p1, p2, p3, p4) 0
-#define CyDmaTdAllocate() 0
-#define CyDmaTdSetConfiguration(p1, p2, p3, p4)
-#define CyDmaTdSetAddress(p1, p2, p3)
-#define CyDmaChSetInitialTd(p1, p2)
-#define CyDmaChEnable(p1, p2)
-#define MUX_DMA_DmaInitialize(p1, p2, p3, p4) 0
+static inline uint8 CyDmaTdAllocate(void) { return 0; }
+static inline cystatus CyDmaTdSetConfiguration(uint8 tdHandle, uint16 transferCount, uint8 nextTd, uint8 configuration)
+{ return CYRET_SUCCESS; }
+static inline cystatus CyDmaTdSetAddress(uint8 tdHandle, uint16 source, uint16 destination) { return CYRET_SUCCESS; }
+static inline cystatus CyDmaChSetInitialTd(uint8 chHandle, uint8 startTd) { return CYRET_SUCCESS; }
+static inline cystatus CyDmaChEnable(uint8 chHandle, uint8 preserveTds) { return CYRET_SUCCESS; }
+static inline cystatus CyDmaChDisable(uint8 chHandle) { return CYRET_SUCCESS; }
+
 #define ADC_data_ready_StartEx(p1)
+#define ADC_SAR_WRK0_PTR 0
+#define Amux_Ctrl_Control_PTR 0
 #define CyGlobalIntEnable
 
 #define DDS32_1_sCTRLReg_ctrlreg__CONTROL_REG 0
@@ -73,12 +61,8 @@ uint8_t no_fb_reg_Read();
 //#define CYDEV_PERIPH_BASE 0
 //#define CYDEV_SRAM_BASE 0
 //#define HI16(x) ((x>>16)&&0xFFFF)
-#define CyDmaChDisable(x)
 #define CyGlobalIntDisable
 
-#define PWMA_Start()
-#define PWMB_Start()
-#define FB_capture_Start()
 #define ZCD_counter_Start()
 #define FB_glitch_detect_Start()
 #define ZCD_compA_Start()
@@ -86,10 +70,6 @@ uint8_t no_fb_reg_Read();
 #define CT1_comp_Start()
 #define CT1_dac_Start()
 #define ZCDref_Start()
-#define FB_Filter_Start()
-#define FB_Filter_SetCoherency(FB_Filter_CHANNEL_A, FB_Filter_KEY_MID)
-#define FB_Filter_CHANNEL_A 0
-#define FB_Filter_KEY_MID 0
 #define ZCD_counter_WritePeriod(x)
 #define ZCD_counter_WriteCompare(x)
 //#define BCLK__BUS_CLK__MHZ 64
@@ -97,19 +77,8 @@ uint8_t no_fb_reg_Read();
 #define FB_glitch_detect_WritePeriod(x)
 #define FB_glitch_detect_WriteCompare1(x)
 #define FB_glitch_detect_WriteCompare2(x)
-#define PWMA_WritePeriod(x)
-#define PWMA_WriteCompare(x)
-#define PWMB_WritePeriod(x)
-#define PWMB_WriteCompare(x)
-#define FB_capture_WritePeriod(x)
-#define FB_Filter_Write24(x, y)
 #define CyDelayUs(x)
 
-#define CT_MUX_Start()
-#define ADC_peak_Start()
-#define Sample_Hold_1_Start()
-#define Comp_1_Start()
-#define ADC_Start()
 #define FB_THRSH_DAC_Start()
 
 #define temp_pwm_WriteCompare1(compare)
@@ -155,7 +124,6 @@ void CyGetUniqueId(uint32_t * val);
 
 
 extern uint8_t system_fault_Control;
-extern uint8_t interrupter1_control_Control;
 extern uint8_t QCW_enable_Control;
 extern uint8_t IVO_Control;
 
@@ -221,11 +189,6 @@ void EEPROM_1_Start();
 uint8_t EEPROM_1_Write(const uint8 * rowData, uint8 rowNumber) ;
 uint8_t EEPROM_1_ReadByte(uint16 address) ;
 
-
-#define interrupter1_WritePeriod(x)
-#define interrupter1_WriteCompare1(x)
-#define interrupter1_WriteCompare2(x)
-#define interrupter1_Start()
 
 #define I2C_WRITE_XFER_MODE 0
 #define I2C_READ_XFER_MODE 1
@@ -331,5 +294,247 @@ uint8_t interrupterTimebase_ReadControlRegister();
 uint8_t interrupterTimebase_ReadStatusRegister();
 void vTaskEnterCritical();
 void vTaskExitCritical();
+
+// DMA definition: ADC_DMA
+static inline uint8 ADC_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void ADC_DMA_DmaRelease() {}
+#define ADC_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: Ch1_DMA
+static inline uint8 Ch1_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void Ch1_DMA_DmaRelease() {}
+#define Ch1_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: Ch2_DMA
+static inline uint8 Ch2_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void Ch2_DMA_DmaRelease() {}
+#define Ch2_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: Ch3_DMA
+static inline uint8 Ch3_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void Ch3_DMA_DmaRelease() {}
+#define Ch3_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: Ch4_DMA
+static inline uint8 Ch4_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void Ch4_DMA_DmaRelease() {}
+#define Ch4_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: int1_dma
+static inline uint8 int1_dma_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void int1_dma_DmaRelease() {}
+#define int1_dma__TD_TERMOUT_EN 0
+
+// DMA definition: ram_to_filter_DMA
+static inline uint8 ram_to_filter_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void ram_to_filter_DMA_DmaRelease() {}
+#define ram_to_filter_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: filter_to_fram_DMA
+static inline uint8 filter_to_fram_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void filter_to_fram_DMA_DmaRelease() {}
+#define filter_to_fram_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: FBC_to_ram_DMA
+static inline uint8 FBC_to_ram_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void FBC_to_ram_DMA_DmaRelease() {}
+#define FBC_to_ram_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: PWMA_init_DMA
+static inline uint8 PWMA_init_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void PWMA_init_DMA_DmaRelease() {}
+#define PWMA_init_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: PWMB_init_DMA
+static inline uint8 PWMB_init_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void PWMB_init_DMA_DmaRelease() {}
+#define PWMB_init_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: QCW_CL_DMA
+static inline uint8 QCW_CL_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void QCW_CL_DMA_DmaRelease() {}
+#define QCW_CL_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: TR1_CL_DMA
+static inline uint8 TR1_CL_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void TR1_CL_DMA_DmaRelease() {}
+#define TR1_CL_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: fram_to_PWMA_DMA
+static inline uint8 fram_to_PWMA_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void fram_to_PWMA_DMA_DmaRelease() {}
+#define fram_to_PWMA_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: PSBINIT_DMA
+static inline uint8 PSBINIT_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void PSBINIT_DMA_DmaRelease() {}
+#define PSBINIT_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: PWMB_PSB_DMA
+static inline uint8 PWMB_PSB_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void PWMB_PSB_DMA_DmaRelease() {}
+#define PWMB_PSB_DMA__TD_TERMOUT_EN 0
+
+// DMA definition: MUX_DMA
+static inline uint8 MUX_DMA_DmaInitialize(
+    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
+static inline void MUX_DMA_DmaRelease() {}
+#define MUX_DMA__TD_TERMOUT_EN 0
+
+// Filter definition: FB_Filter
+static inline void FB_Filter_Start(void) {}
+static inline void FB_Filter_Stop(void) {}
+static inline uint8 FB_Filter_Read8(uint8 channel) { return 0; }
+static inline uint16 FB_Filter_Read16(uint8 channel) { return 0; }
+static inline uint32 FB_Filter_Read24(uint8 channel) { return 0; }
+static inline void FB_Filter_Write8(uint8 channel, uint8 sample) {}
+static inline void FB_Filter_Write16(uint8 channel, uint16 sample) {}
+static inline void FB_Filter_Write24(uint8 channel, uint32 sample) {}
+static inline void FB_Filter_Sleep(void) {}
+static inline void FB_Filter_Wakeup(void) {}
+static inline void FB_Filter_SaveConfig(void) {}
+static inline void FB_Filter_RestoreConfig(void) {}
+static inline void FB_Filter_Init(void) {}
+static inline void FB_Filter_Enable(void) {}
+static inline void FB_Filter_SetCoherency(uint8 channel, uint8 byteSelect) {}
+static inline void FB_Filter_SetCoherencyEx(uint8 regSelect, uint8 key) {}
+static inline void FB_Filter_SetDalign(uint8 regSelect, uint8 state) {}
+
+#define FB_Filter_CHANNEL_A             (0u)
+#define FB_Filter_CHANNEL_B             (1u)
+#define FB_Filter_CHANNEL_A_INTR        (0x08u)
+#define FB_Filter_CHANNEL_B_INTR        (0x10u)
+#define FB_Filter_ALL_INTR              (0xf8u)
+#define FB_Filter_SIGN_BIT              ((uint32)0x00800000u)
+#define FB_Filter_SIGN_BYTE             ((uint32)0xFF000000u)
+#define FB_Filter_ENABLED               (0x01u)
+#define FB_Filter_DISABLED              (0x00u)
+#define FB_Filter_KEY_LOW               (0x00u)
+#define FB_Filter_KEY_MID               (0x01u)
+#define FB_Filter_KEY_HIGH              (0x02u)
+extern reg8 FB_Filter_DFB__HOLDA;
+#define FB_Filter_HOLDA_REG (FB_Filter_DFB__HOLDA)
+#define FB_Filter_HOLDA_PTR (&FB_Filter_DFB__HOLDA)
+extern reg8 FB_Filter_DFB__STAGEA;
+#define FB_Filter_STAGEA_REG (FB_Filter_DFB__STAGEA)
+#define FB_Filter_STAGEA_PTR (&FB_Filter_DFB__STAGEA)
+
+// PWM definition: PWMA
+static inline void    PWMA_Start(void) {}
+static inline void    PWMA_Stop(void) {}
+static inline void    PWMA_WritePeriod(uint16 period) {}
+static inline uint16 PWMA_ReadPeriod(void) { return 0; }
+static inline void    PWMA_WriteCompare(uint16 compare) {}
+static inline void    PWMA_WriteCompare1(uint16 compare) {}
+static inline void    PWMA_WriteCompare2(uint16 compare) {}
+static inline uint16 PWMA_ReadCompare(void) { return 0; }
+static inline void PWMA_Init(void) {}
+static inline void PWMA_Enable(void) {}
+static inline void PWMA_Sleep(void) {}
+static inline void PWMA_Wakeup(void) {}
+static inline void PWMA_SaveConfig(void) {}
+static inline void PWMA_RestoreConfig(void) {}
+#define PWMA_COMPARE2_LSB            (0x00u)
+#define PWMA_COMPARE2_LSB_PTR        (0x00u)
+extern reg16 PWMA_PWMHW__CNT_CMP0;
+#define PWMA_COMPARE1_LSB (PWMA_PWMHW__CNT_CMP0)
+#define PWMA_COMPARE1_LSB_PTR (&PWMA_PWMHW__CNT_CMP0)
+extern reg16 PWMA_PWMHW__PER0;
+#define PWMA_PERIOD_LSB (PWMA_PWMHW__PER0)
+#define PWMA_PERIOD_LSB_PTR (&PWMA_PWMHW__PER0)
+extern reg16 PWMA_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG;
+#define PWMA_COUNTER_LSB_PTR (PWMA_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG)
+#define PWMA_COUNTER_LSB_PTR_PTR (&PWMA_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG)
+
+// PWM definition: PWMB
+static inline void    PWMB_Start(void) {}
+static inline void    PWMB_Stop(void) {}
+static inline void    PWMB_WritePeriod(uint16 period) {}
+static inline uint16 PWMB_ReadPeriod(void) { return 0; }
+static inline void    PWMB_WriteCompare(uint16 compare) {}
+static inline void    PWMB_WriteCompare1(uint16 compare) {}
+static inline void    PWMB_WriteCompare2(uint16 compare) {}
+static inline uint16 PWMB_ReadCompare(void) { return 0; }
+static inline void PWMB_Init(void) {}
+static inline void PWMB_Enable(void) {}
+static inline void PWMB_Sleep(void) {}
+static inline void PWMB_Wakeup(void) {}
+static inline void PWMB_SaveConfig(void) {}
+static inline void PWMB_RestoreConfig(void) {}
+#define PWMB_COMPARE2_LSB            (0x00u)
+#define PWMB_COMPARE2_LSB_PTR        (0x00u)
+extern reg16 PWMB_PWMHW__CNT_CMP0;
+#define PWMB_COMPARE1_LSB (PWMB_PWMHW__CNT_CMP0)
+#define PWMB_COMPARE1_LSB_PTR (&PWMB_PWMHW__CNT_CMP0)
+extern reg16 PWMB_PWMHW__PER0;
+#define PWMB_PERIOD_LSB (PWMB_PWMHW__PER0)
+#define PWMB_PERIOD_LSB_PTR (&PWMB_PWMHW__PER0)
+extern reg16 PWMB_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG;
+#define PWMB_COUNTER_LSB_PTR (PWMB_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG)
+#define PWMB_COUNTER_LSB_PTR_PTR (&PWMB_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG)
+
+// PWM definition: interrupter1
+static inline void    interrupter1_Start(void) {}
+static inline void    interrupter1_Stop(void) {}
+static inline void    interrupter1_WritePeriod(uint16 period) {}
+static inline uint16 interrupter1_ReadPeriod(void) { return 0; }
+static inline void    interrupter1_WriteCompare(uint16 compare) {}
+static inline void    interrupter1_WriteCompare1(uint16 compare) {}
+static inline void    interrupter1_WriteCompare2(uint16 compare) {}
+static inline uint16 interrupter1_ReadCompare(void) { return 0; }
+static inline void interrupter1_Init(void) {}
+static inline void interrupter1_Enable(void) {}
+static inline void interrupter1_Sleep(void) {}
+static inline void interrupter1_Wakeup(void) {}
+static inline void interrupter1_SaveConfig(void) {}
+static inline void interrupter1_RestoreConfig(void) {}
+#define interrupter1_COMPARE2_LSB            (0x00u)
+#define interrupter1_COMPARE2_LSB_PTR        (0x00u)
+extern reg16 interrupter1_PWMHW__CNT_CMP0;
+#define interrupter1_COMPARE1_LSB (interrupter1_PWMHW__CNT_CMP0)
+#define interrupter1_COMPARE1_LSB_PTR (&interrupter1_PWMHW__CNT_CMP0)
+extern reg16 interrupter1_PWMHW__PER0;
+#define interrupter1_PERIOD_LSB (interrupter1_PWMHW__PER0)
+#define interrupter1_PERIOD_LSB_PTR (&interrupter1_PWMHW__PER0)
+extern reg16 interrupter1_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG;
+#define interrupter1_COUNTER_LSB_PTR (interrupter1_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG)
+#define interrupter1_COUNTER_LSB_PTR_PTR (&interrupter1_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG)
+
+static inline void    FB_capture_Start(void) {}
+static inline void    FB_capture_Stop(void) {}
+static inline void    FB_capture_SetInterruptMode(uint8 interruptMode) {}
+static inline uint8   FB_capture_ReadStatusRegister(void) { return 0; }
+static inline uint16  FB_capture_ReadPeriod(void) { return 0; }
+static inline void    FB_capture_WritePeriod(uint16 period) {}
+static inline uint16  FB_capture_ReadCounter(void) { return 0; }
+static inline void    FB_capture_WriteCounter(uint16 counter) {}
+extern reg16 FB_capture_TimerHW__CAP0;
+#define FB_capture_CAPTURE_LSB (FB_capture_TimerHW__CAP0)
+#define FB_capture_CAPTURE_LSB_PTR (&FB_capture_TimerHW__CAP0)
+extern reg8 CT1_dac_viDAC8__D;
+#define CT1_dac_Data_REG (CT1_dac_viDAC8__D)
+#define CT1_dac_Data_PTR (&CT1_dac_viDAC8__D)
+extern reg8 interrupter1_control_Sync_ctrl_reg__CONTROL_REG;
+#define interrupter1_control_Control (interrupter1_control_Sync_ctrl_reg__CONTROL_REG)
+#define interrupter1_control_Control_PTR (&interrupter1_control_Sync_ctrl_reg__CONTROL_REG)
+
+void    interrupter1_control_control_write(uint8 control) ;
+uint8   interrupter1_control_control_read(void) ;
 
 #endif

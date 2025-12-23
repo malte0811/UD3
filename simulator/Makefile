@@ -79,6 +79,12 @@ ${BUILD_DIR}/${BIN} : ${OBJ_FILES}
 
 -include ${DEP_FILE}
 
+sim_hw.h: generate_sim_hw.py sim_hw_base/sim_hw.h
+	python3 generate_sim_hw.py
+
+sim_hw.c: generate_sim_hw.py sim_hw_base/sim_hw.c
+	python3 generate_sim_hw.py
+
 ${BUILD_DIR}/%.o : %.c
 	-mkdir -p $(@D)
 	$(CC) $(CFLAGS) ${INCLUDE_DIRS} -MMD -c $< -o $@

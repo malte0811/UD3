@@ -263,20 +263,3 @@ uint8_t interrupterTimebase_ReadStatusRegister() {
     // TODO implement?
     return 0;
 }
-reg8 FB_Filter_DFB__HOLDA = 0;
-reg8 FB_Filter_DFB__STAGEA = 0;
-reg16 PWMA_PWMHW__CNT_CMP0 = 0;
-reg16 PWMA_PWMHW__PER0 = 0;
-reg16 PWMA_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG = 0;
-reg16 PWMB_PWMHW__CNT_CMP0 = 0;
-reg16 PWMB_PWMHW__PER0 = 0;
-reg16 PWMB_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG = 0;
-reg16 interrupter1_PWMHW__CNT_CMP0 = 0;
-reg16 interrupter1_PWMHW__PER0 = 0;
-reg16 interrupter1_PWMUDB_sP16_pwmdp_u0__16BIT_A0_REG = 0;
-reg16 FB_capture_TimerHW__CAP0 = 0;
-reg8 CT1_dac_viDAC8__D = 0;
-reg8 interrupter1_control_Sync_ctrl_reg__CONTROL_REG = 0;
-
-void    interrupter1_control_control_write(uint8 control) { interrupter1_control_Control = control; }
-uint8   interrupter1_control_control_read(void) { return interrupter1_control_Control; }
