@@ -139,7 +139,6 @@ define_dma('TR1_CL_DMA')
 define_dma('fram_to_PWMA_DMA')
 define_dma('PSBINIT_DMA')
 define_dma('PWMB_PSB_DMA')
-define_dma('MUX_DMA')
 
 define_filter('FB_Filter')
 

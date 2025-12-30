@@ -67,12 +67,6 @@ volatile uint8 bus_command;
 #include "tsk_midi.h"
 #include <device.h>
 
-/* Defines for MUX_DMA */
-#define MUX_DMA_BYTES_PER_BURST 1
-#define MUX_DMA_REQUEST_PER_BURST 1
-#define MUX_DMA_SRC_BASE (CYDEV_SRAM_BASE)
-#define MUX_DMA_DST_BASE (CYDEV_PERIPH_BASE)
-
 /* DMA Configuration for ADC_DMA */
 #define ADC_DMA_BYTES_PER_BURST 2
 #define ADC_DMA_REQUEST_PER_BURST 1
@@ -81,25 +75,14 @@ volatile uint8 bus_command;
 
 #define INITIAL 0 /* Initial value of the filter memory. */
 
-typedef struct
-{
-	uint16_t rms;
-	uint64_t sum_squares;
-} rms_t;
-
-
 adc_sample_t ADC_sample_buf_0[ADC_BUFFER_CNT];
 adc_sample_t ADC_sample_buf_1[ADC_BUFFER_CNT];
-// This is the buffer we read from in calculate_rms. The DMA is initially configured to write to ADC_sample_buf_0 (see
-// initialize_analogs), so this has to start out as ADC_sample_buf_1.
-adc_sample_t *ADC_active_sample_buf = ADC_sample_buf_1;
+adc_sample_t qcw_adc_sample;
 
 rms_t current_idc;
 rms_t voltage_bus;
 rms_t voltage_batt;
 
-// Maps from order of fields in adc_sample_t to order of MUX inputs
-uint8_t ADC_mux_ctl[4] = {0x01, 0x02, 0x03, 0x00};
 static uint32_t drive_top_r_corrected = DRIVEV_R_TOP;
 
 static uint32_t vdriver_raw;
@@ -112,17 +95,29 @@ static uint32_t vdriver_raw;
  * meaningful.
  */
 /* `#START USER_TASK_LOCAL_CODE` */
+enum AnalogState {
+    state_idle,
+    state_qcw,
+    state_qcw_ending,
+};
 
-static bool log_as_qcw = false;
-static bool is_last_qcw = false;
+static enum AnalogState state = state_idle;
+
+static uint8 ADC_DMA_Chan;
+static uint8 ADC_DMA_TD[2];
 
 CY_ISR(ADC_data_ready_ISR) {
-    if(ADC_active_sample_buf==ADC_sample_buf_0 ){
-        ADC_active_sample_buf = ADC_sample_buf_1;
-    } else {
-        ADC_active_sample_buf = ADC_sample_buf_0;
-    }
 	xSemaphoreGiveFromISR(adc_ready_Semaphore, NULL);
+}
+
+adc_sample_t* tsk_analog_get_buffer_for_reading(void) {
+    uint8 writing_td;
+    CyDmaChStatus(ADC_DMA_Chan, &writing_td, NULL);
+    if(writing_td == ADC_DMA_TD[0]){
+        return ADC_sample_buf_1;
+    } else {
+        return ADC_sample_buf_0;
+    }
 }
 
 
@@ -184,40 +179,68 @@ uint16_t average_filter(uint32_t *ptr, uint16_t sample) {
 	return *ptr;
 }
 
+static void init_adc_dma_default(void) {
+	ADC_DMA_Chan = ADC_DMA_DmaInitialize(ADC_DMA_BYTES_PER_BURST, ADC_DMA_REQUEST_PER_BURST, HI16(ADC_DMA_SRC_BASE), HI16(ADC_DMA_DST_BASE));
+	ADC_DMA_TD[0] = CyDmaTdAllocate();
+    ADC_DMA_TD[1] = CyDmaTdAllocate();
+	CyDmaTdSetConfiguration(ADC_DMA_TD[0], sizeof(ADC_sample_buf_0), ADC_DMA_TD[1], ADC_DMA__TD_TERMOUT_EN | TD_INC_DST_ADR);
+    CyDmaTdSetConfiguration(ADC_DMA_TD[1], sizeof(ADC_sample_buf_1), ADC_DMA_TD[0], ADC_DMA__TD_TERMOUT_EN | TD_INC_DST_ADR);
+	CyDmaTdSetAddress(ADC_DMA_TD[0], LO16((uint32)ADC_SAR_WRK0_PTR), LO16((uint32)ADC_sample_buf_0));
+    CyDmaTdSetAddress(ADC_DMA_TD[1], LO16((uint32)ADC_SAR_WRK0_PTR), LO16((uint32)ADC_sample_buf_1));
+	CyDmaChSetInitialTd(ADC_DMA_Chan, ADC_DMA_TD[0]);
+	CyDmaChEnable(ADC_DMA_Chan, 1);
+}
+
+static void init_adc_dma_qcw_pulse(void) {
+	ADC_DMA_Chan = ADC_DMA_DmaInitialize(ADC_DMA_BYTES_PER_BURST, ADC_DMA_REQUEST_PER_BURST, HI16(ADC_DMA_SRC_BASE), HI16(ADC_DMA_DST_BASE));
+	ADC_DMA_TD[0] = CyDmaTdAllocate();
+	CyDmaTdSetConfiguration(ADC_DMA_TD[0], sizeof(qcw_adc_sample), ADC_DMA_TD[0], TD_INC_DST_ADR);
+	CyDmaTdSetAddress(ADC_DMA_TD[0], LO16((uint32)ADC_SAR_WRK0_PTR), LO16((uint32)&qcw_adc_sample));
+	CyDmaChSetInitialTd(ADC_DMA_Chan, ADC_DMA_TD[0]);
+	CyDmaChEnable(ADC_DMA_Chan, 1);
+}
+
+static void free_and_clear_td(uint8* td_ptr) {
+    if (*td_ptr != CY_DMA_INVALID_TD) {
+        CyDmaTdFree(*td_ptr);
+        *td_ptr = CY_DMA_INVALID_TD;
+    }
+}
+
+static void destroy_adc_dma(void) {
+    ADC_DMA_DmaRelease();
+    free_and_clear_td(ADC_DMA_TD);
+    free_and_clear_td(ADC_DMA_TD + 1);
+}
+
 void calculate_rms(void) {
-	if (log_as_qcw) {
-		min_queue_frame(&min_ctx, 44, (uint8_t *)ADC_active_sample_buf, sizeof(ADC_sample_buf_0));
-		if (is_last_qcw) {
-            MUX_Only_VBus_Write(0);
-			log_as_qcw = false;
-			is_last_qcw = false;
-		}
-	} else {
-        
+	if (state == state_idle) {
         uint32_t vdriver_accu=0;
         
+        adc_sample_t* buffer = tsk_analog_get_buffer_for_reading();
         for(uint8_t i=0;i<ADC_BUFFER_CNT;i++){
 
             // read the battery voltage
-            tt.n.batt_v.value = read_bus_mv(rms_filter(&voltage_batt, ADC_active_sample_buf[i].v_batt)) / 1000;
+            tt.n.batt_v.value = read_bus_mv(rms_filter(&voltage_batt, buffer[i].v_batt)) / 1000;
 
             // read the bus voltage
-            tt.n.bus_v.value = read_bus_mv(rms_filter(&voltage_bus, ADC_active_sample_buf[i].v_bus)) / 1000;
+            tt.n.bus_v.value = read_bus_mv(rms_filter(&voltage_bus, buffer[i].v_bus)) / 1000;
 
             // read the battery current
             if(configuration.ct2_type==CT2_TYPE_CURRENT){
-                tt.n.batt_i.value = (((uint32_t)rms_filter(&current_idc, ADC_active_sample_buf[i].i_bus) * params.idc_ma_count) / 100);
+                tt.n.batt_i.value = (((uint32_t)rms_filter(&current_idc, buffer[i].i_bus) * params.idc_ma_count) / 100);
             }else{
-                tt.n.batt_i.value = ((((int32_t)rms_filter(&current_idc, ADC_active_sample_buf[i].i_bus-params.ct2_offset_cnt)) * params.idc_ma_count) / 100);
+                tt.n.batt_i.value = ((((int32_t)rms_filter(&current_idc, buffer[i].i_bus-params.ct2_offset_cnt)) * params.idc_ma_count) / 100);
             }
 
             tt.n.avg_power.value = tt.n.batt_i.value * tt.n.bus_v.value / 10;
             
-            vdriver_accu += ADC_active_sample_buf[i].v_driver;  
-            ADC_active_sample_buf[i].v_bus = 123 << 4;
-            ADC_active_sample_buf[i].v_batt = 13 << 4;
-            ADC_active_sample_buf[i].i_bus = 17 << 4;
-            ADC_active_sample_buf[i].v_driver = 199 << 4;
+            vdriver_accu += buffer[i].v_driver;  
+            // TODO remove or clean up: Make it obvious when the wrong buffer is used
+            buffer[i].v_bus = 123 << 4;
+            buffer[i].v_batt = 13 << 4;
+            buffer[i].i_bus = 17 << 4;
+            buffer[i].v_driver = 199 << 4;
             
         }
         
@@ -227,49 +250,23 @@ void calculate_rms(void) {
           
        
         control_precharge();
+    } else if (state == state_qcw_ending) {
+        destroy_adc_dma();
+        init_adc_dma_default();
+        state = state_idle;
+        // The ADC DMA and the MUX counter may be "misaligned" here. This will be "fixed" after one DMA cycle by the
+        // counter reset.
+        // TODO skip that sample as well?
     }
 }
-
-
 
 void initialize_analogs(void) {
     ADC_peak_Start();
 	Sample_Hold_1_Start();
 	Comp_1_Start();
-
-	/* Variable declarations for ADC_DMA */
-	/* Move these variable declarations to the top of the function */
-	uint8 ADC_DMA_Chan;
-	uint8 ADC_DMA_TD[2];
-
-	ADC_DMA_Chan = ADC_DMA_DmaInitialize(ADC_DMA_BYTES_PER_BURST, ADC_DMA_REQUEST_PER_BURST, HI16(ADC_DMA_SRC_BASE), HI16(ADC_DMA_DST_BASE));
-	ADC_DMA_TD[0] = CyDmaTdAllocate();
-    ADC_DMA_TD[1] = CyDmaTdAllocate();
-	CyDmaTdSetConfiguration(ADC_DMA_TD[0], 8*ADC_BUFFER_CNT, ADC_DMA_TD[1], ADC_DMA__TD_TERMOUT_EN | TD_INC_DST_ADR);
-    CyDmaTdSetConfiguration(ADC_DMA_TD[1], 8*ADC_BUFFER_CNT, ADC_DMA_TD[0], ADC_DMA__TD_TERMOUT_EN | TD_INC_DST_ADR);
-	CyDmaTdSetAddress(ADC_DMA_TD[0], LO16((uint32)ADC_SAR_WRK0_PTR), LO16((uint32)ADC_sample_buf_0));
-    CyDmaTdSetAddress(ADC_DMA_TD[1], LO16((uint32)ADC_SAR_WRK0_PTR), LO16((uint32)ADC_sample_buf_1));
-	CyDmaChSetInitialTd(ADC_DMA_Chan, ADC_DMA_TD[0]);
-	CyDmaChEnable(ADC_DMA_Chan, 1);
-
-	/* Variable declarations for MUX_DMA */
-	/* Move these variable declarations to the top of the function */
-	/* DMA Configuration for MUX_DMA */
-    uint8 MUX_DMA_Chan;
-    uint8 MUX_DMA_TD[1];
-
-	MUX_DMA_Chan = MUX_DMA_DmaInitialize(MUX_DMA_BYTES_PER_BURST, MUX_DMA_REQUEST_PER_BURST, HI16(MUX_DMA_SRC_BASE), HI16(MUX_DMA_DST_BASE));
-	MUX_DMA_TD[0] = CyDmaTdAllocate();
-	CyDmaTdSetConfiguration(MUX_DMA_TD[0], 4, MUX_DMA_TD[0], CY_DMA_TD_INC_SRC_ADR);
-	CyDmaTdSetAddress(MUX_DMA_TD[0], LO16((uint32)ADC_mux_ctl), LO16((uint32)Amux_Ctrl_Control_PTR));
-	CyDmaChSetInitialTd(MUX_DMA_Chan, MUX_DMA_TD[0]);
-	CyDmaChEnable(MUX_DMA_Chan, 1);
-    
-
+    init_adc_dma_default();
 	ADC_data_ready_StartEx(ADC_data_ready_ISR);
-
 	init_rms_filter(&current_idc, INITIAL);
-    
     ADC_Start();
 }
 
@@ -284,8 +281,6 @@ void initialize_charging(void) {
 	final_vbus = 0;
 	charging_counter = 0;
 }
-
-
 
 void ac_precharge_bus_scheme(){
 	//we cant know the AC line voltage so we will watch the bus voltage climb and infer when its charged by it not increasing fast enough
@@ -459,13 +454,16 @@ void tsk_analog_Start(void) {
 }
 
 void tsk_analog_on_qcw_pulse_start() {
-    MUX_Only_VBus_Write(1);
-	log_as_qcw = true;
-	is_last_qcw = false;
+    // Put some reasonably sensible data in case we handle a QCW step before the next bus voltage sample
+    qcw_adc_sample = tsk_analog_get_buffer_for_reading()[0];
+    destroy_adc_dma();
+    init_adc_dma_qcw_pulse();
+    state = state_qcw;
 }
 
 void tsk_analog_on_qcw_pulse_end() {
-	is_last_qcw = true;
+    state = state_qcw_ending;
+	xSemaphoreGiveFromISR(adc_ready_Semaphore, NULL);
 }
 
 /* ------------------------------------------------------------------------ */

@@ -115,6 +115,7 @@ void init_config(){
     configuration.max_tr_duty = 100;
     configuration.max_qcw_duty = 350;
     configuration.qcw_correction = 0;
+    configuration.qcw_bus_droop = 0;
     configuration.temp1_setpoint = 30;
     configuration.pid_temp_set = 45;
     configuration.pid_temp_mode = 0;
@@ -281,6 +282,7 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_current" , configuration.max_qcw_current , 0      ,8000   ,0      ,callback_TTupdateFunction   ,"Maximum QCW current [A]")
     ADD_PARAM(PARAM_CONFIG  ,pdTRUE ,"max_qcw_pw"      , configuration.max_qcw_pw      , 0      ,5000   ,100    ,callback_ConfigFunction     ,"Maximum QCW PW [ms]")
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_correction"  , configuration.qcw_correction  , 0      ,2      ,0      ,NULL                        ,"TODO")
+    ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_bus_droop"   , configuration.qcw_bus_droop   , 0      ,1      ,0      ,NULL                        ,"TODO")
 };
 
    
@@ -1058,9 +1060,10 @@ uint8_t CMD_signals(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args){
         ttprintf("                                    \r");
         ttprintf("Temp 1: %i.%i*C Temp 2: %i.%i*C\r\n", tt.n.temp1.value/10, tt.n.temp1.value%10, tt.n.temp2.value/10, tt.n.temp2.value%10);
         ttprintf("                                    \r");
-        ttprintf("Vbus: %u mV Vbatt: %u mV\r\n", ADC_CountsTo_mVolts(ADC_active_sample_buf[0].v_bus),ADC_CountsTo_mVolts(ADC_active_sample_buf[0].v_batt));
+        adc_sample_t* current_sample = tsk_analog_get_buffer_for_reading();
+        ttprintf("Vbus: %u mV Vbatt: %u mV\r\n", ADC_CountsTo_mVolts(current_sample->v_bus),ADC_CountsTo_mVolts(current_sample->v_batt));
         ttprintf("                                    \r");
-        ttprintf("Ibus: %u mV Vdriver: %u mV\r\n\r\n", ADC_CountsTo_mVolts(ADC_active_sample_buf[0].i_bus),tt.n.driver_v.value);
+        ttprintf("Ibus: %u mV Vdriver: %u mV\r\n\r\n", ADC_CountsTo_mVolts(current_sample->i_bus),tt.n.driver_v.value);
 
     }while(Term_check_break(handle,250));
     

@@ -127,6 +127,7 @@ struct config_struct{
     uint16_t max_qcw_current;
     uint16_t max_qcw_duty;
     uint8_t qcw_correction;
+    uint8_t qcw_bus_droop;
     
     uint8_t SigGen_minOtOffset;
     

@@ -42,6 +42,7 @@ uint8_t no_fb_reg_Read();
 
 
 static inline uint8 CyDmaTdAllocate(void) { return 0; }
+static inline void CyDmaTdFree(uint8 td) {}
 static inline cystatus CyDmaTdSetConfiguration(uint8 tdHandle, uint16 transferCount, uint8 nextTd, uint8 configuration)
 { return CYRET_SUCCESS; }
 static inline cystatus CyDmaTdSetAddress(uint8 tdHandle, uint16 source, uint16 destination) { return CYRET_SUCCESS; }
@@ -390,12 +391,6 @@ static inline uint8 PWMB_PSB_DMA_DmaInitialize(
     uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
 static inline void PWMB_PSB_DMA_DmaRelease() {}
 #define PWMB_PSB_DMA__TD_TERMOUT_EN 0
-
-// DMA definition: MUX_DMA
-static inline uint8 MUX_DMA_DmaInitialize(
-    uint8 BurstCount, uint8 ReqestPerBurst, uint16 UpperSrcAddress, uint16 UpperDestAddress) { return 0; }
-static inline void MUX_DMA_DmaRelease() {}
-#define MUX_DMA__TD_TERMOUT_EN 0
 
 // Filter definition: FB_Filter
 static inline void FB_Filter_Start(void) {}

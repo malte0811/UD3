@@ -67,6 +67,43 @@ ramp_params volatile ramp;
 
 TimerHandle_t xQCW_Timer;
 
+// Unit: ADC counts
+static uint16_t initial_bus_voltage;
+
+static uint8_t adjust_for_bus_droop(uint8_t relative_voltage) {
+    if (!configuration.qcw_bus_droop) { return relative_voltage; }
+    // TODO plan:
+    // Start of pulse:
+    // - DONE: Read current RMS-smoothed bus voltage into variable
+    // - Reconfigure ADC DMA to write to a single adc_sample_t
+    //   - 8kHz (default sample rate) is ok for this. Do we want to sample at 32kHz anyhow for smoothing?
+    //   - Disable normal RMS computation during pulse
+    //   - Or just add another DMA? Restarting is a nightmare otherwise
+    //   - In tsk_analog_on_qcw_pulse_start
+    // On call:
+    // - Read current bus voltage
+    // - DONE: Compute adjusted voltage
+    // End of pulse:
+    // - Restore ADC DMA
+    //   - Do this in "reaction method" to tsk_analog_on_qcw_pulse_end?
+    //   - Sequence is probably:
+    //     - Disable both DMAs
+    //     - Stop ADC in some way?
+    //     - Wait for ADC conversion done (IsEndConversion)
+    //     - Re-init both DMAs
+    //     - Restart ADC? Or just hope that this does not race with a SOC?
+    //TODO remove or properly initialize
+    uint16_t current_bus_voltage;
+
+    if (current_bus_voltage == 0) { return 255; }
+    uint16_t adjusted_relative_voltage = (relative_voltage * (uint32_t) initial_bus_voltage) / current_bus_voltage;
+    if (adjusted_relative_voltage <= 255) {
+        return adjusted_relative_voltage;
+    } else {
+        return 255;
+    }
+}
+
 static uint8_t shift_for_relative_voltage(uint8_t relative_voltage) {
     if (configuration.qcw_correction == QCW_CORRECT_LINEAR) {
         return relative_voltage;
@@ -78,7 +115,8 @@ static uint8_t shift_for_relative_voltage(uint8_t relative_voltage) {
 }
 
 static void qcw_modulate(uint8_t relative_voltage){
-    uint8_t relative_shift = shift_for_relative_voltage(relative_voltage);
+    uint8_t corrected_voltage = adjust_for_bus_droop(relative_voltage);
+    uint8_t relative_shift = shift_for_relative_voltage(corrected_voltage);
     //linearize modulation value based on fb_filter_out period
 	uint8_t shift_period = (((uint16_t) relative_shift) * (params.pwm_top - fb_filter_out)) >> 8;
 	//assign new modulation value to the params.pwmb_psb_val ram
@@ -220,9 +258,10 @@ void qcw_start(){
     if(tt.n.dutycycle.value > configuration.max_qcw_duty) return;  //Don't command a pulse if duty is too high
        
     ramp.index=0;
+    tsk_analog_on_qcw_pulse_start();
 	//the next stuff is time sensitive, so disable interrupts to avoid glitches
 	CyGlobalIntDisable;
-    tsk_analog_on_qcw_pulse_start();
+    initial_bus_voltage = voltage_bus.rms;
 	// now enable the QCW interrupter
 	QCW_enable_Control = 1;
 	params.pwmb_psb_val = params.pwm_top - params.pwmb_start_psb_val;

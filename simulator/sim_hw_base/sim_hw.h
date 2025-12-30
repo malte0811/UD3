@@ -40,6 +40,7 @@ uint8_t no_fb_reg_Read();
 
 
 static inline uint8 CyDmaTdAllocate(void) { return 0; }
+static inline void CyDmaTdFree(uint8 td) {}
 static inline cystatus CyDmaTdSetConfiguration(uint8 tdHandle, uint16 transferCount, uint8 nextTd, uint8 configuration)
 { return CYRET_SUCCESS; }
 static inline cystatus CyDmaTdSetAddress(uint8 tdHandle, uint16 source, uint16 destination) { return CYRET_SUCCESS; }
