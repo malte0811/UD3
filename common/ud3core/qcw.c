@@ -106,11 +106,9 @@ void qcw_regenerate_ramp(){
 
 void qcw_cmd_midi_pulse(int32_t volume, int32_t frequencyTenths){
     param.qcw_freq = frequencyTenths;
-    if(!QCW_enable_Control){
-        ramp.changed = pdTRUE;  
-        qcw_regenerate_ramp();
-        qcw_start();
-    }
+    ramp.changed = pdTRUE;
+    qcw_regenerate_ramp();
+    qcw_start();
 }
 
 void qcw_ramp_point(uint16_t x,uint8_t y){
