@@ -10,13 +10,16 @@
 #define MIN_ID_FEATURE  15
 #define MIN_ID_MIDI     20
 #define MIN_ID_SID      21
+// QCW ramp is 400 bytes, so does not fit in a single MIN frame. Message format:
+// 2 bytes offset; the highest bit indicates last frame of ramp
+// Rest of message is raw ramp data (uint8)
+#define MIN_ID_QCW_RAMP 22
     
 #define MIN_ID_EVENT    40
 #define MIN_ID_ALARM    41
 #define MIN_ID_DEBUG    42
 #define MIN_ID_VMS      43
-#define MIN_ID_OS_INFO  44
-    
+
 #define SYNTH_CMD_FLUSH     1
 #define SYNTH_CMD_SID       2
 #define SYNTH_CMD_MIDI      3
