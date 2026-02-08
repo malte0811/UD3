@@ -246,7 +246,7 @@ static unsigned VMS_calculateValue(VMS_listDataObject * data){
     //first check if the block needs to be killed because of a noteOff/noteOn event
     if(block->behavior == NORMAL){
         if(MidiProcessor_getCCValue(VMSW_getSrcChannel(outputId, voiceId), MIDI_CC_SUSTAIN_PEDAL) < 0x40 && !VMSW_isVoiceOn(outputId, voiceId)){
-            VMS_nextBlock(data, 0);
+            VMS_nextBlock(data, VMS_BLOCKSET_OFFBLOCK);
             return 0;
         }
     }
@@ -312,7 +312,7 @@ static unsigned VMS_calculateValue(VMS_listDataObject * data){
     if(VMS_hasReachedThreshold(block, currFactor, targetFactor, param1)){
         //yeah, load the next block
         currFactor = targetFactor;
-        VMS_nextBlock(data, 1);
+        VMS_nextBlock(data, VMS_BLOCKSET_NEXTBLOCKS);
         VMSW_setKnownValue(block->target, currFactor, outputId, voiceId);
         return 0;
     }
