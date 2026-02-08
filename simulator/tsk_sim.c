@@ -49,10 +49,13 @@ static void populate_buffer(adc_sample_t* ptr){
 		ptr[i].v_bus = bus_charge;
 		ptr[i].i_bus = bus_i;
 	}
-	xSemaphoreGive(adc_ready_Semaphore);
 }
 
+static adc_sample_t* ADC_active_sample_buf = ADC_sample_buf_0;
 
+adc_sample_t* tsk_analog_get_buffer_for_reading(void) {
+    return ADC_active_sample_buf;
+}
 
 void tsk_sim(void *pvParameters) {
 	while(1){
@@ -64,6 +67,7 @@ void tsk_sim(void *pvParameters) {
 				populate_buffer(ADC_sample_buf_1);		
 				ADC_active_sample_buf = ADC_sample_buf_1;
 			}
+            xSemaphoreGive(adc_ready_Semaphore);
 		}
 		
 		vTaskDelay(10);
