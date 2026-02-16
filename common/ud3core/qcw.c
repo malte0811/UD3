@@ -51,9 +51,9 @@ void qcw_handle(){
 
 void qcw_regenerate_ramp(){
     if(!ramp.changed){ return; }
-    uint8_t modulation_high = pdFALSE;
     uint32_t modulation_period = roundf((10.0f / (float)param.qcw_freq) / 0.00025f);  //Frequency in tenths
 
+    // Top of QCW ramp. If modulation is used, this refers to the lower level
     uint32_t ramp_max = param.qcw_max;
     // Clamp the max down to fit the volume
     if((ramp_max + param.qcw_vol) > 255) { ramp_max = 255 - param.qcw_vol;  }
@@ -65,6 +65,10 @@ void qcw_regenerate_ramp(){
     if (max_active > sizeof(ramp.data)) { max_active = sizeof(ramp.data); }
     ramp.stop_index = max_active;
 
+    // Generate ramp: Stay at qcw_offset for qcw_holdoff samples. Afterwards, increase the "base ramp" at ramp_increment
+    // per sample until ramp_max is reached. If modulation is enabled, add a square wave from 0 to qcw_vol and
+    // frequency qcw_freq to this ramp.
+    uint8_t modulation_high = pdFALSE;
     float ramp_increment = param.qcw_ramp / 100.0;
     float ramp_val = param.qcw_offset;
     for(uint16_t i=0;i<max_active;i++){
@@ -83,19 +87,19 @@ void qcw_regenerate_ramp(){
             }
         }
     }
-    // Not 100% necessary since stop_index is set, but otherwise `ramp draw` shows incorrect data
+    // Fill inactive portion of QCW buffer with zeroes for clean display in TT
     for (uint16_t i = max_active; i < QCW_RAMP_SAMPLES; ++i) {
        ramp.data[i] = 0;
     }
     ramp.changed = pdFALSE;
 
-    uint32_t max_to_send = (configuration.max_qcw_pw*10)/MIDI_ISR_US;
+    // Send ramp data to Teslaterm for display
     uint8_t ramp_byte_per_frame = 200;
     uint8_t payload_length = 2 + ramp_byte_per_frame;
     uint8_t* temp_buffer = pvPortMalloc(payload_length);
-    for (uint16_t next_byte = 0; next_byte < max_to_send; next_byte += ramp_byte_per_frame) {
-        bool is_last = next_byte + ramp_byte_per_frame >= max_to_send;
-        uint8_t ramp_bytes_this_frame = is_last ? max_to_send - next_byte : ramp_byte_per_frame;
+    for (uint16_t next_byte = 0; next_byte < max_active; next_byte += ramp_byte_per_frame) {
+        bool is_last = next_byte + ramp_byte_per_frame >= max_active;
+        uint8_t ramp_bytes_this_frame = is_last ? max_active - next_byte : ramp_byte_per_frame;
         temp_buffer[0] = (next_byte >> 8) | (is_last << 7);
         temp_buffer[1] = next_byte & 0xff;
         memcpy(temp_buffer + 2, ramp.data + next_byte, ramp_bytes_this_frame);
