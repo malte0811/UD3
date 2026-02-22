@@ -49,6 +49,25 @@ void qcw_handle(){
     }
 }
 
+static void send_qcw_ramp_to_tt() {
+    uint16_t active_length = QCW_RAMP_SAMPLES;
+    while (active_length > 0 && ramp.data[active_length - 1] == 0) {
+        --active_length;
+    }
+    uint8_t ramp_byte_per_frame = 200;
+    uint8_t payload_length = 2 + ramp_byte_per_frame;
+    uint8_t* temp_buffer = pvPortMalloc(payload_length);
+    for (uint16_t next_byte = 0; next_byte < active_length; next_byte += ramp_byte_per_frame) {
+        bool is_last = next_byte + ramp_byte_per_frame >= active_length;
+        uint8_t ramp_bytes_this_frame = is_last ? active_length - next_byte : ramp_byte_per_frame;
+        temp_buffer[0] = (next_byte >> 8) | (is_last << 7);
+        temp_buffer[1] = next_byte & 0xff;
+        memcpy(temp_buffer + 2, ramp.data + next_byte, ramp_bytes_this_frame);
+        min_queue_frame(&min_ctx, MIN_ID_QCW_RAMP, temp_buffer, ramp_bytes_this_frame + 2);
+    }
+    vPortFree(temp_buffer);
+}
+
 void qcw_regenerate_ramp(){
     if(!ramp.changed){ return; }
     uint32_t modulation_period = roundf((10.0f / (float)param.qcw_freq) / 0.00025f);  //Frequency in tenths
@@ -88,24 +107,24 @@ void qcw_regenerate_ramp(){
         }
     }
     // Fill inactive portion of QCW buffer with zeroes for clean display in TT
-    for (uint16_t i = max_active; i < QCW_RAMP_SAMPLES; ++i) {
-       ramp.data[i] = 0;
-    }
+    memset(ramp.data + max_active, 0, QCW_RAMP_SAMPLES - max_active);
     ramp.changed = pdFALSE;
 
-    // Send ramp data to Teslaterm for display
-    uint8_t ramp_byte_per_frame = 200;
-    uint8_t payload_length = 2 + ramp_byte_per_frame;
-    uint8_t* temp_buffer = pvPortMalloc(payload_length);
-    for (uint16_t next_byte = 0; next_byte < max_active; next_byte += ramp_byte_per_frame) {
-        bool is_last = next_byte + ramp_byte_per_frame >= max_active;
-        uint8_t ramp_bytes_this_frame = is_last ? max_active - next_byte : ramp_byte_per_frame;
-        temp_buffer[0] = (next_byte >> 8) | (is_last << 7);
-        temp_buffer[1] = next_byte & 0xff;
-        memcpy(temp_buffer + 2, ramp.data + next_byte, ramp_bytes_this_frame);
-        min_queue_frame(&min_ctx, MIN_ID_QCW_RAMP, temp_buffer, ramp_bytes_this_frame + 2);
+    send_qcw_ramp_to_tt();
+}
+
+void qcw_process_ramp_packet(uint8_t* data, uint8_t msg_length) {
+    if (msg_length < 3) { return; }
+    bool is_last = (data[0] & 0x80) != 0;
+    uint16_t offset = ((data[0] & 0x7f) << 8) | data[1];
+    uint8_t data_length = msg_length - 2;
+    uint16_t byte_after = offset + data_length;
+    if (byte_after > QCW_RAMP_SAMPLES) { return; }
+    memcpy(ramp.data + offset, data + 2, data_length);
+    if (is_last) {
+        memset(ramp.data + byte_after, 0, QCW_RAMP_SAMPLES - byte_after);
+        send_qcw_ramp_to_tt();
     }
-    vPortFree(temp_buffer);
 }
 
 void qcw_cmd_midi_pulse(int32_t volume, int32_t frequencyTenths){

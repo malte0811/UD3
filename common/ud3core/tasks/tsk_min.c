@@ -26,6 +26,7 @@
 #include <cytypes.h>
 
 #include "tsk_min.h"
+#include "qcw.h"
 #include "tsk_sid.h"
 #include "tsk_midi.h"
 #include "tsk_cli.h"
@@ -403,6 +404,9 @@ void min_application_handler(uint8_t min_id, uint8_t *min_payload, uint8_t len_p
             return;
         case MIN_ID_SID:
             process_min_sid(min_payload, len_payload);
+            return;
+        case MIN_ID_QCW_RAMP:
+            qcw_process_ramp_packet(min_payload, len_payload);
             return;
         case MIN_ID_WD:
                 if(len_payload==4){
