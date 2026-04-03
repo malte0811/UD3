@@ -234,6 +234,7 @@ void min_command(uint8_t command, uint8_t *min_payload, uint8_t len_payload){
 struct __event_response {
     uint8_t id;
     uint8_t struct_version;
+    uint16_t temp;
     uint32_t unique_id[2];
     char udname[16];   
 };
@@ -250,6 +251,7 @@ typedef struct __os_info os_info;
 
 void min_event(uint8_t command, uint8_t *min_payload, uint8_t len_payload){
     event_resonse response;
+    response.temp = 0;
     switch(command){
         case EVENT_GET_INFO:
             response.id = EVENT_GET_INFO;
@@ -606,6 +608,10 @@ void tsk_min_TaskProc(void *pvParameters) {
             xSemaphoreGive(min_Semaphore);
             if(bytes_waiting==0){
                 vTaskDelay(2);
+            }
+            if (qcw_ramp_changed) {
+                send_qcw_ramp_to_tt();
+                qcw_ramp_changed = false;
             }
         }
         

@@ -125,7 +125,8 @@ void init_config(){
     configuration.autotune_s = 1;
     configuration.baudrate = 460800;
     configuration.r_top = 500000;
-    strncpy(configuration.ud_name,"UD3-Tesla", sizeof(configuration.ud_name));
+    memset(configuration.ud_name, 0, sizeof(configuration.ud_name));
+    strncpy(configuration.ud_name,"UD3-Tesla", sizeof("UD3-Tesla"));
     configuration.ct2_type = CT2_TYPE_CURRENT;
     configuration.ct2_voltage = 4000;
     configuration.ct2_offset = 0;

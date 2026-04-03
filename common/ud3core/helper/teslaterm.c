@@ -245,7 +245,7 @@ void send_chart_text_center(int16_t x, int16_t y, uint8_t color, uint8_t size, c
 
 
 void send_status(uint8_t bus_active, uint8_t transient_active, uint8_t bus_controlled,uint8_t killbit, TERMINAL_HANDLE * handle) {
-    uint8_t buf[8];
+    uint8_t buf[10];
     buf[0] = 0xFF;
     buf[1] = sizeof(buf)-2;
     buf[2] = TT_STATUS;
@@ -254,6 +254,8 @@ void send_status(uint8_t bus_active, uint8_t transient_active, uint8_t bus_contr
 	buf[5] = configuration.max_tr_pw >> 8;
 	buf[6] = configuration.max_tr_prf;
 	buf[7] = configuration.max_tr_prf >> 8;
+	buf[8] = configuration.max_qcw_pw;
+	buf[9] = configuration.max_qcw_pw >> 8;
     ttprintb(buf, sizeof(buf));
 }
 

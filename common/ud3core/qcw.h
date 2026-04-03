@@ -26,12 +26,16 @@
 #if !defined(qcw_H)
 #define qcw_H
     
+#include <stdbool.h>
 #include <device.h>
 #include "cli_common.h"
 #include "TTerm.h"
 #include "helper/teslaterm.h"
 
 #define QCW_RAMP_SAMPLES (400)
+
+extern bool qcw_ramp_changed;
+void send_qcw_ramp_to_tt();
     
 typedef struct
 {

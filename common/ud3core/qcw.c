@@ -23,9 +23,11 @@
 */
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include "qcw.h"
 #include "hardware.h"
+// TODO sim only
 
 #include "ZCDtoPWM.h"
 #include "helper/teslaterm.h"
@@ -49,9 +51,12 @@ void qcw_handle(){
     }
 }
 
-static void send_qcw_ramp_to_tt() {
+bool qcw_ramp_changed = false;
+
+void send_qcw_ramp_to_tt() {
     uint16_t active_length = QCW_RAMP_SAMPLES;
-    while (active_length > 0 && ramp.data[active_length - 1] == 0) {
+    // Ensure that active_length is always positive so we send at least one packet even for zero ramps
+    while (active_length > 1 && ramp.data[active_length - 1] == 0) {
         --active_length;
     }
     uint8_t ramp_byte_per_frame = 200;
@@ -92,7 +97,7 @@ void qcw_regenerate_ramp(){
     float ramp_val = param.qcw_offset;
     for(uint16_t i=0;i<max_active;i++){
         ramp.data[i]=floorf(ramp_val);
-        if(i>param.qcw_holdoff){
+        if(i>=param.qcw_holdoff){
             ramp_val += ramp_increment;
             if(ramp_val > ramp_max) { ramp_val = ramp_max; }
 
@@ -120,10 +125,12 @@ void qcw_process_ramp_packet(uint8_t* data, uint8_t msg_length) {
     uint8_t data_length = msg_length - 2;
     uint16_t byte_after = offset + data_length;
     if (byte_after > QCW_RAMP_SAMPLES) { return; }
+    // TODO also stop after max qcw pw from config
     memcpy(ramp.data + offset, data + 2, data_length);
     if (is_last) {
         memset(ramp.data + byte_after, 0, QCW_RAMP_SAMPLES - byte_after);
-        send_qcw_ramp_to_tt();
+        //send_qcw_ramp_to_tt();
+        qcw_ramp_changed = true;
     }
 }
 

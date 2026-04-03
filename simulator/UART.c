@@ -129,32 +129,6 @@ int setup_pseudo_serial() {
 
 void tsk_udp_rx(void *pvParameters) {
 	sck* ip = pvParameters;
-	
-	ip->rc = -1;
-	
-	const int y = 1;
-	
-	ip->sock = socket (PF_INET, SOCK_DGRAM, 0);
-	
-		
-	if (ip->sock < 0) {
-		console_print("Socket error\n");
-	}
-	
-	
-	ip->pseudo_terminal = setup_pseudo_serial();
-	/* Lokalen Server Port bind(en) */
-	ip->servAddr.sin_family = AF_INET;
-	ip->servAddr.sin_addr.s_addr = htonl (INADDR_ANY);
-	ip->servAddr.sin_port = htons (MIN_PORT);
-	setsockopt(ip->sock, SOL_SOCKET, SO_REUSEADDR, &y, sizeof(int));
-	ip->rc = bind ( ip->sock, (struct sockaddr *) &ip->servAddr,
-			  sizeof (ip->servAddr));
-	if (ip->rc < 0) {
-		console_print("Bind error\n");
-	}
-	
-
 	while(1){
 		vTaskDelay(1);
 		struct pollfd polls[2] = {
@@ -221,13 +195,39 @@ xTaskHandle tsk_udp_tx_TaskHandle;
 int tsk_started = 0;
 
 
-sck sim_socket;
+sck sim_socket = {0};
 
 void UART_Start(){
 	
 	
 	if(!tsk_started){
-		
+        sim_socket.rc = -1;
+        
+        const int y = 1;
+        
+        sim_socket.sock = socket (PF_INET, SOCK_DGRAM, 0);
+        
+            
+        if (sim_socket.sock < 0) {
+            console_print("Socket error\n");
+            return;
+        }
+        
+        
+        sim_socket.pseudo_terminal = setup_pseudo_serial();
+        /* Lokalen Server Port bind(en) */
+        sim_socket.servAddr.sin_family = AF_INET;
+        sim_socket.servAddr.sin_addr.s_addr = htonl (INADDR_ANY);
+        sim_socket.servAddr.sin_port = htons (MIN_PORT);
+        setsockopt(sim_socket.sock, SOL_SOCKET, SO_REUSEADDR, &y, sizeof(int));
+        sim_socket.rc = bind ( sim_socket.sock, (struct sockaddr *) &sim_socket.servAddr,
+                  sizeof (sim_socket.servAddr));
+        if (sim_socket.rc < 0) {
+            console_print("Bind error\n");
+            return;
+        }
+        
+
 		xTaskCreate(tsk_udp_rx, "UDP-RX", 1024, &sim_socket, 3, &tsk_udp_rx_TaskHandle);
 		xTaskCreate(tsk_udp_tx, "UDP-TX", 1024, &sim_socket, 3, &tsk_udp_tx_TaskHandle);
 	
