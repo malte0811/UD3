@@ -32,30 +32,8 @@ SOURCE_FILES += portable/utils/wait_for_event.c
 SOURCE_FILES += portable/port.c
 
 # Demo library.
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_analog.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_cli.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_duty.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_eth_common.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_fault.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_hwGauge.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_midi.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_min.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_overlay.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_sid.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_thermistor.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/tasks/tsk_usb.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/alarmevent.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/autotune.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/cli_basic.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/cli_common.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/clock.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/DMA.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/interrupter.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/SignalGenerator.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/system.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/qcw.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/ZCDtoPWM.c
-SOURCE_FILES += ${CORE_DIR}/ud3core/helper/brailledraw.c
+SOURCE_FILES += $(wildcard ${CORE_DIR}/ud3core/tasks/*.c)
+SOURCE_FILES += $(filter-out $(CORE_DIR)/ud3core/main.c,$(wildcard ${CORE_DIR}/ud3core/*.c))
 SOURCE_FILES += $(wildcard ${CORE_DIR}/ud3core/helper/*.c)
 SOURCE_FILES += $(wildcard ${CORE_DIR}/tterm/*.c)
 SOURCE_FILES += $(wildcard ${CORE_DIR}/min/*.c)
@@ -81,7 +59,7 @@ ${BUILD_DIR}/${BIN} : ${OBJ_FILES}
 
 ${BUILD_DIR}/%.o : %.c
 	-mkdir -p $(@D)
-	$(CC) $(CFLAGS) ${INCLUDE_DIRS} -MMD -c $< -o $@
+	$(CC) $(CFLAGS) ${INCLUDE_DIRS} -MMD -MP -c $< -o $@
 
 .PHONY: clean
 
