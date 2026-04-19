@@ -29,6 +29,7 @@
  * See tsk_midi.h for function documentation.
  */
 
+#include "VMS_UD3.h"
 #include "cyapicallbacks.h"
 #include <cytypes.h>
 

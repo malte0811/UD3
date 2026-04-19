@@ -46,11 +46,8 @@
 
 #include <stdlib.h>
 #include <limits.h>
-#include <cytypes.h>
+#include <string.h>
 
-#include "clock.h"
-#include "qcw.h"
-#include "ZCDtoPWM.h"
 #include "cli_common.h"
 
 #include "FreeRTOS.h"
@@ -58,9 +55,8 @@
 #include "SignalGenerator.h"
 #include "DutyCompressor.h"
 #include "RingBuffer/include/RingBuffer.h"
-#include "interrupter.h"
-#include "tasks/tsk_cli.h"
 #include "telemetry.h"
+#include "qcw.h"
 #ifdef SIMULATOR
 #include "tsk_audio.h"
 #endif
@@ -73,17 +69,11 @@ static int32_t SigGen_minOt = 0;
 /** @brief Pointer to main task data (voice array, pulse buffer, TR burst state) */
 static SigGen_taskData_t * taskData;
 
-/** @brief Forward declaration of main signal generation task */
-static void SigGen_task(void * params);
-
 /** @brief Master volume for all voices (0-MAX_VOL, typically 0-100), 15-bit fixed-point scaling */
 static uint32_t masterVolume = MAX_VOL;
 
 /** @brief Current synthesis mode (SYNTH_OFF/MIDI/SID/TR/MIDI_QCW/SID_QCW) */
 static uint8_t synthMode = SYNTH_OFF;
-
-/** @brief Current pulse being timed by hardware ISR (pre-loaded for next period) */
-static SigGen_pulseData_t readPulse;
 
 /** @brief Per-voice bitmask flags for UI feedback (VoiceFlags[i] = 1<<i) */
 uint32_t VoiceFlags[SIGGEN_VOICECOUNT];
@@ -98,14 +88,8 @@ static volatile uint32_t voicesToEradicate = 0;
 
 /** @brief Convert milliseconds to timer period counts (32kHz timer: 32 counts/µs) */
 #define SIGGEN_MS_TO_PERIOD_COUNT(X) (X) * 32000
-/** @brief Convert microseconds to timer period counts (32kHz timer: 32 counts/µs) */
-#define SIGGEN_US_TO_PERIOD_COUNT(X) (X) * 32
 /** @brief Convert timer period counts to microseconds (right shift by 5 = divide by 32) */
 #define SIGGEN_PERIOD_COUNT_TO_US(X) (X) >> 5
-/** @brief Convert microseconds to on-time counts (1:1 for hardware PWM) */
-#define SIGGEN_US_TO_OT_COUNT(X) (X)
-/** @brief Convert siggen volume (0-INT16_MAX) to DAC current value using linear scaling */
-#define SIGGEN_VOLUME_TO_CURRENT_DAC_VALUE(X) (params.min_tr_cl_dac_val + (((X) * params.diff_tr_cl_dac_val) >> 15))
 
 /* ===== Control Flags ===== */
 
@@ -117,19 +101,6 @@ static volatile uint32_t voicesToEradicate = 0;
 #define SIGGEN_LONG_DELAY_THRESHOLD_ms 2
 
 /* ===== Timer Control Macros ===== */
-
-/** @brief Check if pulse timer is currently running */
-#define SigGen_isTimerRunning() (interrupterTimebase_ReadControlRegister() & interrupterTimebase_CTRL_ENABLE)
-/** @brief Start pulse timer and enable ISR */
-#define SigGen_startTimer() interrupterTimebase_WriteControlRegister(interrupterTimebase_ReadControlRegister() | interrupterTimebase_CTRL_ENABLE); SigGen_enableTimerISR();
-/** @brief Stop pulse timer and disable ISR */
-#define SigGen_stopTimer() interrupterTimebase_WriteControlRegister(interrupterTimebase_ReadControlRegister() & ~interrupterTimebase_CTRL_ENABLE); SigGen_disableTimerISR();
-/** @brief Check if timer ISR is enabled */
-#define SigGen_isTimerISREnabled() interrupterIRQ_GetState()
-/** @brief Disable timer ISR */
-#define SigGen_disableTimerISR() interrupterIRQ_Disable()
-/** @brief Enable timer ISR */
-#define SigGen_enableTimerISR() interrupterIRQ_Enable()
 
 /* ===== Pulse Manipulation Macros ===== */
 
@@ -167,109 +138,9 @@ static void SigGen_setVoiceParams(uint32_t voice, uint32_t enabled, int32_t puls
 
 /** @brief Debug flag for print throttling (used in simulator mode) */
 uint32_t IsOkToPrint = 0;
-
-/**
- * @brief 8kHz system tick ISR - clock and QCW control
- *
- * High-priority ISR called at MIDI_ISR_Hz (8000 Hz) by hardware timer.
- * Handles:
- * - Global clock tick (for uptime tracking)
- * - QCW mode ramping (if QCW_enable_Control active)
- *
- * Execution time: ~10µs (clock_tick) or ~50µs (qcw_handle)
- *
- * @note In QCW mode, bypasses normal signal generation to run qcw_handle()
- */
-CY_ISR(isr_synth) {   
-    clock_tick();
-    if(QCW_enable_Control){
-        qcw_handle();
-        return;
-    }
-}
     
-/**
- * @brief Hardware pulse timer ISR - consume pulses from ring buffer
- *
- * Called when interrupterTimebase timer expires (variable rate, depends on pulse periods).
- * Workflow:
- * 1. Command previous pulse to hardware via interrupter_oneshotRaw()
- * 2. Read next pulse from ring buffer
- * 3. Load next pulse period into timer compare register
- * 4. If buffer empty, stop timer
- *
- * Execution time: ~5-15µs depending on buffer state
- *
- * @note Uses ISR-safe RingBuffer_readFromISR() for thread safety
- * @note Zero-period pulses are rejected and retried (invalid state)
- * @note Timer stops automatically when buffer empty
- */
-CY_ISR(SigGen_PulseTimerISR){
-    interrupterTimebase_ReadStatusRegister();
-    interrupterIRQ_ClearPending();
-    
-    //start the previous pulse
-    if(!(readPulse.current == 0 || readPulse.onTime == 0)){
-        if(configuration.is_qcw == 0 || synthMode == SYNTH_TR){ //Don't command a pulse in QCW mode... For now.
-            interrupter_oneshotRaw(readPulse.onTime, readPulse.current);
-        }
-    }
-    
-    //try to read the next pulse
-    while(1){
-        if(RingBuffer_readFromISR(taskData->pulseBuffer, (void*)&readPulse, 1) == 1){
-            //check if we got valid pulse and if not retry
-            if(readPulse.period == 0){ 
-                readPulse.period = 1;
-                continue;
-            }
-            
-            //and finally reduce the buffer size
-            taskData->bufferLengthInCounts -= readPulse.period;
-            
-            if(readPulse.period < SIGGEN_MIN_PERIOD){ 
-                //TODO evaluate occurance of this happening. Should be impossible and if it does happen it ruins the entire note timebase...
-                readPulse.period = SIGGEN_MIN_PERIOD;
-            }
-            
-            //load timer registers
-            interrupterTimebase_WriteCompare(readPulse.period);
-            
-            //we got a valid time => exit loop
-            break;
-
-            //is the timer already running longer than the period? if so make it trigger as soon as possible
-            //TODO evaluate if this is actually neccessary. After all the timer compare mode is set to ">=", so setting a compare value lower than the counter should trigger a pulse right away anyway
-        }else{
-            //no more pulses in the buffer or other error. Turn off the timer 
-            SigGen_stopTimer();
-            
-            //also there is no way that there is still some time left in the buffer... clear it just in case
-            taskData->bufferLengthInCounts = 0;
-            
-            //no more pulses could be read out => jsut exit from the loop
-            break;
-        }
-        
-    }
-}
-
-/**
- * @brief Parameter change callback for siggen configuration
- *
- * Recalculates derived parameters when siggen settings change:
- * - SigGen_minOt: minimum on-time threshold = max_tr_pw * SigGen_minOtOffset%
- *
- * @param params Parameter table (unused)
- * @param index Index of changed parameter (unused)
- * @param handle Terminal handle for error messages (unused)
- * @return pdPASS always (changes always accepted)
- */
-uint8_t callback_siggen(parameter_entry * params, uint8_t index, TERMINAL_HANDLE * handle){
-    //update minimum OT parameter
+void SigGen_update_min_ot(){
     SigGen_minOt = (configuration.max_tr_pw * configuration.SigGen_minOtOffset) / 100;
-    
-    return pdPASS;
 }
 
 /**
@@ -285,7 +156,7 @@ uint8_t callback_siggen(parameter_entry * params, uint8_t index, TERMINAL_HANDLE
  *
  * Must be called once during system initialization before any voice operations.
  */
-void SigGen_init(){
+void SigGen_init_data(){
     //initialize flags needed for masking voices
     for(uint32_t i = 0; i < SIGGEN_VOICECOUNT; i++){
         VoiceFlags[i] = 1<<i;
@@ -294,19 +165,6 @@ void SigGen_init(){
     SigGen_taskData_t * data = pvPortMalloc(sizeof(SigGen_taskData_t));
     memset((void *)data, 0, sizeof(SigGen_taskData_t));
     taskData = data;
-    
-    //create pulse buffer
-    data->pulseBuffer = RingBuffer_create(64, sizeof(SigGen_pulseData_t));
-    
-    //initialize timers
-    
-    //Timer 2&3 generate the signal period. 32Bit mode, no prescaler
-    interrupterTimebase_Init();
-    interrupterIRQ_StartEx(SigGen_PulseTimerISR);
-    
-    isr_midi_StartEx(isr_synth);
-    
-    xTaskCreate(SigGen_task, "SigGen", configMINIMAL_STACK_SIZE+128, (void*) data, tskIDLE_PRIORITY + 4, NULL);
 }
 
 /**
@@ -779,7 +637,7 @@ void SigGen_limit(){
  * @note Called by interrupter module or CLI commands
  * @note QCW modes are partially implemented (placeholder switch cases)
  */
-void SigGen_switchSynthMode(uint8_t newMode){
+void SigGen_switchSynthMode(enum SYNTH newMode){
     //kill output when changing synth mode
     SigGen_killAudio();
     
@@ -871,7 +729,7 @@ void SigGen_setOutputEnabled(uint32_t en){
  * @note Called by interrupter_kill(), SigGen_setOutputEnabled(0), mode switches
  * @note Does not clear voice parameters (frequency, volume) - only disables output
  */
-void SigGen_killAudio(){
+void SigGen_killAudio_data(){
     // This can only happen during UD3 startup
     if (!taskData) { return; }
     //TODO evaluate if this is actually thread safe
@@ -884,57 +742,7 @@ void SigGen_killAudio(){
         taskData->voice[currVoice].limitedHpvCount = 0;
     }
     
-    //kill the timer
-    SigGen_stopTimer();
-    
-    //reset the buffer, which must be done with the timer interrupt disabled to prevent intereference with the bufferLengthInCounts write
-    SigGen_disableTimerISR();
-    RingBuffer_flush(taskData->pulseBuffer);
-    taskData->bufferLengthInCounts = 0;
-    SigGen_enableTimerISR();
-    
     tt.n.midi_voices.value = 0;
-}
-
-/**
- * @brief Queue a pulse for hardware output (converts units and writes to ring buffer)
- *
- * Conversion process:
- * 1. Input pulse in microseconds and siggen volume (0-INT16_MAX)
- * 2. Convert period: µs → timer counts (32 counts/µs at 32kHz timer)
- * 3. Convert onTime: µs → timer counts (1:1 for hardware PWM)
- * 4. Convert current: siggen volume → DAC counts via linear scaling
- *    DAC value = min_tr_cl_dac_val + ((current * diff_tr_cl_dac_val) >> 15)
- * 5. Write to ring buffer, update bufferLengthInCounts
- *
- * Thread safety:
- * - Uses RingBuffer_write() (thread-safe)
- * - Disables timer ISR during bufferLengthInCounts update
- *
- * @param pulse Pointer to pulse descriptor in microseconds (period, onTime, current)
- * @return 1 if pulse queued successfully, 0 if buffer full
- *
- * @note Called by SigGen_task() to feed pulses to hardware ISR
- * @note Buffer capacity: 64 entries (SIGGEN_PULSEBUFFER_SIZE)
- */
-uint8_t SigGen_queuePulse(SigGen_pulseData_t* pulse) {
-    //convert the period, volume and ontime to the values that will need to be written into the hardware upon pulse execution
-    SigGen_pulseData_t raw_pulse;
-    raw_pulse.period = SIGGEN_US_TO_PERIOD_COUNT(pulse->period);
-    raw_pulse.onTime = SIGGEN_US_TO_OT_COUNT(pulse->onTime);
-    raw_pulse.current = SIGGEN_VOLUME_TO_CURRENT_DAC_VALUE(pulse->current);
-
-    //write it into the buffer
-    if(RingBuffer_write(taskData->pulseBuffer, (void*)&raw_pulse, 1, 0) != 1){
-        //write failed, not enough space available...
-        return 0;
-    }else{
-        //increase the buffersize
-        SigGen_disableTimerISR();
-        taskData->bufferLengthInCounts += raw_pulse.period;
-        SigGen_enableTimerISR();
-        return 1;
-    }
 }
 
 /** @brief Debug flag for pulse addition tracking (unused) */
@@ -1046,284 +854,252 @@ static void SigGen_overlayPulse(SigGen_pulseData_t * pulse, int32_t newVolume, i
  * @note Voice age incremented each cycle (for envelope effects)
  */
     
-static void SigGen_task(void * callData){
-    volatile SigGen_taskData_t * data = (SigGen_taskData_t *) callData;
+void SigGen_generate(SigGen_PulseConsumer output, SigGen_QueueSizeGetter get_queue_size_counts){
+    if(!isEnabled) return;
+          
+    //check if the buffer is running low
+    while(get_queue_size_counts() < SIGGEN_MS_TO_PERIOD_COUNT(1)){
     
-    while(1){
-        vTaskDelay(1);
-        //uint32_t noVoicesEnabled = 1;
-		
-		if(!isEnabled) continue;
-              
-        //check if the buffer is running low
-        while(data->bufferLengthInCounts < SIGGEN_MS_TO_PERIOD_COUNT(1)){
+        //calculate time from current pulse to next pulse
+    
+        //find next pulse to be triggered
+        int32_t nextVoice = 0xffff;
+        SigGen_pulseData_t nextPulse = {.current = 0, . onTime = 0, .period = INT_MAX};
         
-            //calculate time from current pulse to next pulse
-        
-            //find next pulse to be triggered
-            int32_t nextVoice = 0xffff;
-            SigGen_pulseData_t nextPulse = {.current = 0, . onTime = 0, .period = INT_MAX};
-            
-            for(uint32_t currVoice = 0; currVoice < SIGGEN_VOICECOUNT; currVoice++){
-                //if we are in TR mode then only voice 1 is active and all others can be ignored
-                if(synthMode == SYNTH_TR && currVoice >= 1) break;
+        for(uint32_t currVoice = 0; currVoice < SIGGEN_VOICECOUNT; currVoice++){
+            //if we are in TR mode then only voice 1 is active and all others can be ignored
+            if(synthMode == SYNTH_TR && currVoice >= 1) break;
 
-                //if no other enabled voice was found so far, then the current one is the one with the lowest remaining time. But only if it is enabled
-                if(nextVoice == 0xffff){
-                    if(data->voice[currVoice].limitedEnabled && data->voice[currVoice].limitedPulseWidth_us != 0){
+            //if no other enabled voice was found so far, then the current one is the one with the lowest remaining time. But only if it is enabled
+            if(nextVoice == 0xffff){
+                if(taskData->voice[currVoice].limitedEnabled && taskData->voice[currVoice].limitedPulseWidth_us != 0){
+                    nextVoice = currVoice;
+                    
+                    //will the next pulse be a hypervoice pulse or not?
+                    if(taskData->voice[currVoice].currHPVDivider == 0 && taskData->voice[currVoice].currHPVCounter < taskData->voice[currVoice].counter){
+                        //yes, set the timeToNextPulse to the hpv counter
+                        nextPulse.period = taskData->voice[currVoice].currHPVCounter;
+                    }else{
+                        //no set it to the normal counter
+                        nextPulse.period = taskData->voice[currVoice].counter;
+                    }
+                }
+
+            //is the current voice's timer expiring sooner than that of the current nextVoice? 
+            }else{
+                if(taskData->voice[currVoice].limitedEnabled && taskData->voice[currVoice].limitedPulseWidth_us != 0){
+                    if((taskData->voice[currVoice].counter < nextPulse.period) || (taskData->voice[currVoice].currHPVDivider == 0 && taskData->voice[currVoice].currHPVCounter < nextPulse.period)){
                         nextVoice = currVoice;
-                        
+
                         //will the next pulse be a hypervoice pulse or not?
-                        if(data->voice[currVoice].currHPVDivider == 0 && data->voice[currVoice].currHPVCounter < data->voice[currVoice].counter){
+                        if(taskData->voice[currVoice].currHPVDivider == 0 && taskData->voice[currVoice].currHPVCounter < taskData->voice[currVoice].counter){
                             //yes, set the timeToNextPulse to the hpv counter
-                            nextPulse.period = data->voice[currVoice].currHPVCounter;
+                            nextPulse.period = taskData->voice[currVoice].currHPVCounter;
                         }else{
                             //no set it to the normal counter
-                            nextPulse.period = data->voice[currVoice].counter;
-                        }
-                    }
-
-                //is the current voice's timer expiring sooner than that of the current nextVoice? 
-                }else{
-                    if(data->voice[currVoice].limitedEnabled && data->voice[currVoice].limitedPulseWidth_us != 0){
-                        if((data->voice[currVoice].counter < nextPulse.period) || (data->voice[currVoice].currHPVDivider == 0 && data->voice[currVoice].currHPVCounter < nextPulse.period)){
-                            nextVoice = currVoice;
-
-                            //will the next pulse be a hypervoice pulse or not?
-                            if(data->voice[currVoice].currHPVDivider == 0 && data->voice[currVoice].currHPVCounter < data->voice[currVoice].counter){
-                                //yes, set the timeToNextPulse to the hpv counter
-                                nextPulse.period = data->voice[currVoice].currHPVCounter;
-                            }else{
-                                //no set it to the normal counter
-                                nextPulse.period = data->voice[currVoice].counter;
-                            }
+                            nextPulse.period = taskData->voice[currVoice].counter;
                         }
                     }
                 }
-                
-                //we also need to reset the alreadyTriggered flag for later
-                data->voice[currVoice].alreadyTriggered = 0;
             }
             
-            if(nextVoice == 0xffff){ 
-                //if no voice is enabled we can just break out of the loop as no more data can be generated anyway
-                break;
-            }
-            
-            //figure out how long the maximum delay we can add to the buffer without it becoming laggy is
-            int32_t maxPeriod_us = SIGGEN_PERIOD_COUNT_TO_US(((SIGGEN_MS_TO_PERIOD_COUNT(SIGGEN_LONG_DELAY_THRESHOLD_ms)) - data->bufferLengthInCounts));
-            
-            //is the time longer? If so just limit it to the maximum
-            //if we do this then no voice will trigger a pulse and all pulse parameters will remain at zero except for the period
-            //the timer interrupt will check for this and ignore the pulse as if it was one that had its pulse muted due to burst mode
-            if(nextPulse.period > maxPeriod_us) nextPulse.period = maxPeriod_us;
-            
-            //noVoicesEnabled = 0;
+            //we also need to reset the alreadyTriggered flag for later
+            taskData->voice[currVoice].alreadyTriggered = 0;
+        }
+        
+        if(nextVoice == 0xffff){ 
+            //if no voice is enabled we can just break out of the loop as no more data can be generated anyway
+            break;
+        }
+        
+        //figure out how long the maximum delay we can add to the buffer without it becoming laggy is
+        int32_t maxPeriod_us = SIGGEN_PERIOD_COUNT_TO_US(((SIGGEN_MS_TO_PERIOD_COUNT(SIGGEN_LONG_DELAY_THRESHOLD_ms)) - get_queue_size_counts()));
+        
+        //is the time longer? If so just limit it to the maximum
+        //if we do this then no voice will trigger a pulse and all pulse parameters will remain at zero except for the period
+        //the timer interrupt will check for this and ignore the pulse as if it was one that had its pulse muted due to burst mode
+        if(nextPulse.period > maxPeriod_us) nextPulse.period = maxPeriod_us;
+        
+        //noVoicesEnabled = 0;
 
-            //now the voice of which the timer expires next is indexed by nextVoice, propagate the current time to that point (aka decrease all other time counters by the delay to the next pulse)
-            for(uint32_t currVoice = 0; currVoice < SIGGEN_VOICECOUNT; currVoice++){
-                //if we are in TR mode then only voice 1 is active and all others can be ignored
-                if(synthMode == SYNTH_TR && currVoice >= 1) break;
+        //now the voice of which the timer expires next is indexed by nextVoice, propagate the current time to that point (aka decrease all other time counters by the delay to the next pulse)
+        for(uint32_t currVoice = 0; currVoice < SIGGEN_VOICECOUNT; currVoice++){
+            //if we are in TR mode then only voice 1 is active and all others can be ignored
+            if(synthMode == SYNTH_TR && currVoice >= 1) break;
+            
+            if(taskData->voice[currVoice].limitedEnabled){ 
+                //decrement frequency timer
+                taskData->voice[currVoice].counter -= nextPulse.period;
                 
-                if(data->voice[currVoice].limitedEnabled){ 
-                    //decrement frequency timer
-                    data->voice[currVoice].counter -= nextPulse.period;
-                    
-                    //decrement burst timer if burst is active
-                    if(data->voice[currVoice].burstPeriod != 0) data->voice[currVoice].burstCounter -= nextPulse.period;
-                    
-                    //decrement hpv timer if hpv is active
-                    if(data->voice[currVoice].currHPVDivider == 0) data->voice[currVoice].currHPVCounter -= nextPulse.period;
+                //decrement burst timer if burst is active
+                if(taskData->voice[currVoice].burstPeriod != 0) taskData->voice[currVoice].burstCounter -= nextPulse.period;
+                
+                //decrement hpv timer if hpv is active
+                if(taskData->voice[currVoice].currHPVDivider == 0) taskData->voice[currVoice].currHPVCounter -= nextPulse.period;
 
-                    //check if a pulse needs to be sent because this timer expired (turned to 0)
-                    if(data->voice[currVoice].counter <= 0){ 
-                        //reset the counter. If noise is enabled we add a random offset to this
+                //check if a pulse needs to be sent because this timer expired (turned to 0)
+                if(taskData->voice[currVoice].counter <= 0){ 
+                    //reset the counter. If noise is enabled we add a random offset to this
+                    
+                    //first make sure that the period is actually large enough to get the counter positive again
+                    if(taskData->voice[currVoice].limitedPeriod < -taskData->voice[currVoice].counter){
+                        //no its not... just reset the counter to zero. Best we can do :(
+                        taskData->voice[currVoice].counter = 0;
+                    }else{
+                        //yep data seems valid. Add the period to the counter
+                        taskData->voice[currVoice].counter += taskData->voice[currVoice].limitedPeriod;
+                    }
+                    
+                    if(taskData->voice[currVoice].noiseAmplitude){
+                        //generate 32bit random number
+                        int32_t randomizer = rand()*rand();
+                        //limit frequency change to 0.5-2.0x fBase or whatever noise Amplitude is set to
+                        int32_t noiseLimit = (taskData->voice[currVoice].noiseAmplitude > taskData->voice[currVoice].limitedPeriod) ? taskData->voice[currVoice].limitedPeriod : taskData->voice[currVoice].noiseAmplitude;
+                        randomizer = (randomizer & noiseLimit) - (noiseLimit>>1);
+                        if(abs(randomizer) < taskData->voice[currVoice].counter) taskData->voice[currVoice].counter += randomizer;
+                    }  //TODO verify use of "&" as randomizer scaling
+
+                    //overlay current pulse
+                    SigGen_overlayPulse(&nextPulse, taskData->voice[currVoice].pulseVolume, taskData->voice[currVoice].limitedPulseWidth_us);
+
+                    //block timer for this iteration
+                    taskData->voice[currVoice].alreadyTriggered = 1;
+                    
+                    //update HPV divider if it is enabled
+                    if(taskData->voice[currVoice].limitedHpvCount != 0 && !taskData->voice[currVoice].noiseAmplitude){
                         
-                        //first make sure that the period is actually large enough to get the counter positive again
-                        if(data->voice[currVoice].limitedPeriod < -data->voice[currVoice].counter){
-                            //no its not... just reset the counter to zero. Best we can do :(
-                            data->voice[currVoice].counter = 0;
-                        }else{
-                            //yep data seems valid. Add the period to the counter
-                            data->voice[currVoice].counter += data->voice[currVoice].limitedPeriod;
+                        //it is enabled, reduce divider count if its not already zero
+                        if(taskData->voice[currVoice].currHPVDivider > 0)  taskData->voice[currVoice].currHPVDivider--;
+
+                        //reached the pulse to have HPV
+                        if(taskData->voice[currVoice].currHPVDivider == 0){
+                            //reset counter to the correct offset
+                            taskData->voice[currVoice].currHPVCounter = taskData->voice[currVoice].hpvOffset;
                         }
-                        
-                        if(data->voice[currVoice].noiseAmplitude){
-                            //generate 32bit random number
-                            int32_t randomizer = rand()*rand();
-                            //limit frequency change to 0.5-2.0x fBase or whatever noise Amplitude is set to
-                            int32_t noiseLimit = (data->voice[currVoice].noiseAmplitude > data->voice[currVoice].limitedPeriod) ? data->voice[currVoice].limitedPeriod : data->voice[currVoice].noiseAmplitude;
-                            randomizer = (randomizer & noiseLimit) - (noiseLimit>>1);
-                            if(abs(randomizer) < data->voice[currVoice].counter) data->voice[currVoice].counter += randomizer;
-                        }  //TODO verify use of "&" as randomizer scaling
-
-                        //overlay current pulse
-                        SigGen_overlayPulse(&nextPulse, data->voice[currVoice].pulseVolume, data->voice[currVoice].limitedPulseWidth_us);
-
-                        //block timer for this iteration
-                        data->voice[currVoice].alreadyTriggered = 1;
-                        
-                        //update HPV divider if it is enabled
-                        if(data->voice[currVoice].limitedHpvCount != 0 && !data->voice[currVoice].noiseAmplitude){
+                    }
+                    
+                }
+                
+                if(taskData->voice[currVoice].currHPVDivider == 0 && taskData->voice[currVoice].currHPVCounter <= 0){
+                    //HPV pulse was just triggered. Process it like a normal one, but also update the divider count
+                    
+                    //unlike a normal pulse a HPV pulse isn't continuous, it will disable itself until the next main pulse writes the proper count value
+                    taskData->voice[currVoice].currHPVCounter = INT_MAX;
+                    
+                    //is HPV still supposed to be on?
+                    if(taskData->voice[currVoice].limitedHpvCount != 0 && !taskData->voice[currVoice].noiseAmplitude){
+                        //yes :)
+                        taskData->voice[currVoice].currHPVDivider = taskData->voice[currVoice].limitedHpvCount;
+                    }else{
+                        taskData->voice[currVoice].currHPVDivider = INT_MAX;
+                    }
                             
-                            //it is enabled, reduce divider count if its not already zero
-                            if(data->voice[currVoice].currHPVDivider > 0)  data->voice[currVoice].currHPVDivider--;
+                    //overlay current pulse
+                    SigGen_overlayPulse(&nextPulse, taskData->voice[currVoice].hpvVolume, taskData->voice[currVoice].limitedHpvPulseWidth_us);
 
-                            //reached the pulse to have HPV
-                            if(data->voice[currVoice].currHPVDivider == 0){
-                                //reset counter to the correct offset
-                                data->voice[currVoice].currHPVCounter = data->voice[currVoice].hpvOffset;
-                            }
-                        }
-                        
-                    }
-                    
-                    if(data->voice[currVoice].currHPVDivider == 0 && data->voice[currVoice].currHPVCounter <= 0){
-                        //HPV pulse was just triggered. Process it like a normal one, but also update the divider count
-                        
-                        //unlike a normal pulse a HPV pulse isn't continuous, it will disable itself until the next main pulse writes the proper count value
-                        data->voice[currVoice].currHPVCounter = INT_MAX;
-                        
-                        //is HPV still supposed to be on?
-                        if(data->voice[currVoice].limitedHpvCount != 0 && !data->voice[currVoice].noiseAmplitude){
-                            //yes :)
-                            data->voice[currVoice].currHPVDivider = data->voice[currVoice].limitedHpvCount;
-                        }else{
-                            data->voice[currVoice].currHPVDivider = INT_MAX;
-                        }
-                                
-                        //overlay current pulse
-                        SigGen_overlayPulse(&nextPulse, data->voice[currVoice].hpvVolume, data->voice[currVoice].limitedHpvPulseWidth_us);
-
-                        //block timer for this iteration
-                        data->voice[currVoice].alreadyTriggered = 1;
-                    }
-                    
-                    if(data->voice[currVoice].burstPeriod != 0 && data->voice[currVoice].burstCounter <= 0){
-                        //burst period timer just rolled over. Reset it
-                        data->voice[currVoice].burstCounter += data->voice[currVoice].burstPeriod;
-                    }
-
-                    configASSERT(data->voice[currVoice].counter >= 0);
+                    //block timer for this iteration
+                    taskData->voice[currVoice].alreadyTriggered = 1;
                 }
-            }
-            
-            //find timers that would trigger within the ontime or holdoff time of the current pulse
-            
-			//check if any other timers would trigger within the ontime and or the holdoff time
-            for(uint32_t currVoice = 0; currVoice < SIGGEN_VOICECOUNT; currVoice++){
-                //if we are in TR mode then only voice 1 is active and all others can be ignored
-                if(synthMode == SYNTH_TR && currVoice >= 1) break;
                 
-                int32_t currentMinimumPeriod = (nextPulse.onTime + param.offtime);
-                
-                if(data->voice[currVoice].limitedEnabled){ 
-                    //would the note pulse occur within the pulse or during the holdoff time after it?
-                    if(data->voice[currVoice].counter < currentMinimumPeriod){ 
-                        
-                        data->voice[currVoice].counter += data->voice[currVoice].limitedPeriod;
-                        
-                        if(data->voice[currVoice].noiseAmplitude){
-                            //generate 32bit random number
-                            int32_t randomizer = rand()*rand();
-                            //limit frequency change to 0.5-2.0x fBase or whatever noise Amplitude is set to
-                            int32_t noiseLimit = (data->voice[currVoice].noiseAmplitude > data->voice[currVoice].limitedPeriod) ? data->voice[currVoice].limitedPeriod : data->voice[currVoice].noiseAmplitude;
-                            randomizer = (randomizer & noiseLimit) - (noiseLimit>>1);
-                            if(abs(randomizer) < data->voice[currVoice].counter) data->voice[currVoice].counter += randomizer;
-                        }  //TODO verify use of "&" as randomizer scaling
-                        
-                        //did this timer already trigger during this pulse length? If so we just skip it
-                        if(!data->voice[currVoice].alreadyTriggered){
-                            //overlay current pulse
-                            SigGen_overlayPulse(&nextPulse, data->voice[currVoice].pulseVolume, data->voice[currVoice].limitedPulseWidth_us);
-
-                            //block timer for this iteration
-                            data->voice[currVoice].alreadyTriggered = 1;
-
-                            //and finally go back to the start of the list
-                            currVoice = 0;
-                        }
-                    }
-                    
-                    //would the voices HPV pulse trigger during the deadtime?
-                    if(data->voice[currVoice].currHPVDivider == 0 && data->voice[currVoice].currHPVCounter <= currentMinimumPeriod){ 
-                        //disable HPV counter
-                        data->voice[currVoice].currHPVCounter = INT_MAX;
-                        
-                        //is HPV still supposed to be on?
-                        if(data->voice[currVoice].limitedHpvCount != 0 && !data->voice[currVoice].noiseAmplitude){
-                            //yes :)
-                            data->voice[currVoice].currHPVDivider = data->voice[currVoice].limitedHpvCount;
-                        }else{
-                            //no :(
-                            data->voice[currVoice].currHPVDivider = INT_MAX;
-                        }
-                        
-                        //did this timer already trigger during this pulse length? If so we just skip it
-                        if(!data->voice[currVoice].alreadyTriggered){
-                            //no => add the pulse volume to the current one. Check if the width is wider than the current one, if so use it instead
-                            
-                            //overlay current pulse
-                            SigGen_overlayPulse(&nextPulse, data->voice[currVoice].hpvVolume, data->voice[currVoice].limitedHpvPulseWidth_us);
-
-                            //block timer for this iteration
-                            data->voice[currVoice].alreadyTriggered = 1;
-
-                            //and finally go back to the start of the list
-                            currVoice = 0;
-                        }
-                    }
+                if(taskData->voice[currVoice].burstPeriod != 0 && taskData->voice[currVoice].burstCounter <= 0){
+                    //burst period timer just rolled over. Reset it
+                    taskData->voice[currVoice].burstCounter += taskData->voice[currVoice].burstPeriod;
                 }
-            }
-            
-            //limit volume of pulse
-            if(nextPulse.onTime > MAX_VOL) nextPulse.onTime = MAX_VOL;
-            
-            //check if the voice fron which the pulse originates is muted due to burst off time. If it is then we just set the pulse current and ontime to zero.
-            //we still need to add it however to prevent the buffer from running dry and the load exceeding 100%
-            if(data->voice[nextVoice].burstPeriod != 0 && data->voice[nextVoice].burstCounter < data->voice[nextVoice].burstOt){
-                nextPulse.onTime = 0;
-                nextPulse.current = 0;
-            }
-            
-            //we were here
-            
-            //write it into the buffer
-            if (!SigGen_queuePulse(&nextPulse)) {
-                //TODO maybe send an alarm?
-                
-                //theoretically it might be cleverer to continue; here, but that could create a situation where we get stuck in this loop, so break instead
-                break;
+
+                configASSERT(taskData->voice[currVoice].counter >= 0);
             }
         }
         
-        //it is possible that the timer is turned of at this point in the code but a pulse is waiting. If that is the case the timer needs to be kickstarted so it can begin reading out more pulses by itself
-        if(!SigGen_isTimerRunning() && RingBuffer_getDataCount(data->pulseBuffer) > 0){
-            //time is off but pulses are waiting. Load the first pulse and start the timer
+        //find timers that would trigger within the ontime or holdoff time of the current pulse
+        
+        //check if any other timers would trigger within the ontime and or the holdoff time
+        for(uint32_t currVoice = 0; currVoice < SIGGEN_VOICECOUNT; currVoice++){
+            //if we are in TR mode then only voice 1 is active and all others can be ignored
+            if(synthMode == SYNTH_TR && currVoice >= 1) break;
             
-            //get the next pulse
-            if(RingBuffer_read(data->pulseBuffer, (void*)&readPulse, 1) == 1){
-                taskData->bufferLengthInCounts -= readPulse.period;
+            int32_t currentMinimumPeriod = (nextPulse.onTime + param.offtime);
+            
+            if(taskData->voice[currVoice].limitedEnabled){ 
+                //would the note pulse occur within the pulse or during the holdoff time after it?
+                if(taskData->voice[currVoice].counter < currentMinimumPeriod){ 
+                    
+                    taskData->voice[currVoice].counter += taskData->voice[currVoice].limitedPeriod;
+                    
+                    if(taskData->voice[currVoice].noiseAmplitude){
+                        //generate 32bit random number
+                        int32_t randomizer = rand()*rand();
+                        //limit frequency change to 0.5-2.0x fBase or whatever noise Amplitude is set to
+                        int32_t noiseLimit = (taskData->voice[currVoice].noiseAmplitude > taskData->voice[currVoice].limitedPeriod) ? taskData->voice[currVoice].limitedPeriod : taskData->voice[currVoice].noiseAmplitude;
+                        randomizer = (randomizer & noiseLimit) - (noiseLimit>>1);
+                        if(abs(randomizer) < taskData->voice[currVoice].counter) taskData->voice[currVoice].counter += randomizer;
+                    }  //TODO verify use of "&" as randomizer scaling
+                    
+                    //did this timer already trigger during this pulse length? If so we just skip it
+                    if(!taskData->voice[currVoice].alreadyTriggered){
+                        //overlay current pulse
+                        SigGen_overlayPulse(&nextPulse, taskData->voice[currVoice].pulseVolume, taskData->voice[currVoice].limitedPulseWidth_us);
+
+                        //block timer for this iteration
+                        taskData->voice[currVoice].alreadyTriggered = 1;
+
+                        //and finally go back to the start of the list
+                        currVoice = 0;
+                    }
+                }
                 
-                if(readPulse.period < SIGGEN_MIN_PERIOD) readPulse.period = SIGGEN_MIN_PERIOD;
-                
-                //reset counter to trigger asap
-                interrupterTimebase_WriteCounter(0);
-                
-                //load timer registers
-                interrupterTimebase_WriteCompare(readPulse.period);
-                
-                //clear the irq incase its still pending
-                interrupterIRQ_ClearPending();
-                
-                //and finally re-enable the timer
-                SigGen_startTimer();
+                //would the voices HPV pulse trigger during the deadtime?
+                if(taskData->voice[currVoice].currHPVDivider == 0 && taskData->voice[currVoice].currHPVCounter <= currentMinimumPeriod){ 
+                    //disable HPV counter
+                    taskData->voice[currVoice].currHPVCounter = INT_MAX;
+                    
+                    //is HPV still supposed to be on?
+                    if(taskData->voice[currVoice].limitedHpvCount != 0 && !taskData->voice[currVoice].noiseAmplitude){
+                        //yes :)
+                        taskData->voice[currVoice].currHPVDivider = taskData->voice[currVoice].limitedHpvCount;
+                    }else{
+                        //no :(
+                        taskData->voice[currVoice].currHPVDivider = INT_MAX;
+                    }
+                    
+                    //did this timer already trigger during this pulse length? If so we just skip it
+                    if(!taskData->voice[currVoice].alreadyTriggered){
+                        //no => add the pulse volume to the current one. Check if the width is wider than the current one, if so use it instead
+                        
+                        //overlay current pulse
+                        SigGen_overlayPulse(&nextPulse, taskData->voice[currVoice].hpvVolume, taskData->voice[currVoice].limitedHpvPulseWidth_us);
+
+                        //block timer for this iteration
+                        taskData->voice[currVoice].alreadyTriggered = 1;
+
+                        //and finally go back to the start of the list
+                        currVoice = 0;
+                    }
+                }
             }
-            
-            //wait what? Read failed although there is supposedly data in the buffer... anyway, forget what we are doing and just carry on the loop
         }
-#ifdef SIMULATOR
-        simulator_process_audio(data, &readPulse);
-#endif
+        
+        //limit volume of pulse
+        if(nextPulse.onTime > MAX_VOL) nextPulse.onTime = MAX_VOL;
+        
+        //check if the voice fron which the pulse originates is muted due to burst off time. If it is then we just set the pulse current and ontime to zero.
+        //we still need to add it however to prevent the buffer from running dry and the load exceeding 100%
+        if(taskData->voice[nextVoice].burstPeriod != 0 && taskData->voice[nextVoice].burstCounter < taskData->voice[nextVoice].burstOt){
+            nextPulse.onTime = 0;
+            nextPulse.current = 0;
+        }
+        
+        //we were here
+        
+        //write it into the buffer
+        if (!output(&nextPulse)) {
+            //TODO maybe send an alarm?
+            
+            //theoretically it might be cleverer to continue; here, but that could create a situation where we get stuck in this loop, so break instead
+            break;
+        }
     }
+}
+
+enum SYNTH SigGen_getSynthMode() {
+    return synthMode;
 }

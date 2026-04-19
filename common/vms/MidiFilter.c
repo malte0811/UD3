@@ -15,7 +15,7 @@
 #include "NoteMapper.h"
 #include "MidiFilter.h"
 #include "TTerm.h"
-#include "tasks/tsk_cli.h"
+#include "FreeRTOS.h"
 
 /* 
  * filter options:

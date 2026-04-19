@@ -21,13 +21,7 @@
  */
 #define VMSW_GET_TIME_MS() ((xTaskGetTickCount() * 1000) / configTICK_RATE_HZ)
 
-/**
- * @brief Initialize VMS wrapper
- *
- * Allocates voice data arrays, initializes VMS core, and creates VMS task.
- * Must be called once at system startup.
- */
-void VMSW_init();
+void VMSW_init_data();
 
 /**
  * @brief Stop a note

@@ -12,7 +12,7 @@
 #define SIDFILTER_INC
 
 #include <stdint.h>
-#include <tasks/tsk_sid.h>
+#include "sid_types.h"
 
 /**
  * @brief SID filter global data

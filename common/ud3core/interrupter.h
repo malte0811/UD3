@@ -72,9 +72,6 @@
 /** @brief Destination base address (PWM peripheral registers) */
 #define int1_dma_DST_BASE (CYDEV_PERIPH_BASE)
 
-/** @brief Maximum volume value (INT16_MAX for signal generator) */
-#define MAX_VOL INT16_MAX
-
 /** @brief Minimum volume value */
 #define MIN_VOL 0
 

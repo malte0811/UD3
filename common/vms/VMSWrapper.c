@@ -20,16 +20,14 @@
 #include "MidiProcessor.h"
 #include "VMSDefaults.h"
 #include "NoteMapper.h"
-#include "interrupter.h"
 #include "cli_common.h"
-#include "helper/nvm.h"
+#include "nvm.h"
 #include "TTerm.h"
-#include "tasks/tsk_cli.h"
+#include <string.h>
 
 static VMS_VoiceData_t ** voiceData;
 
 static uint32_t VMSW_getNextVoice(uint32_t note, uint32_t output, uint32_t channel);
-static void VMSW_task(void * params);
 
 //static uint32_t blockMemSize = VMS_DEFAULT_BLOCKMEM_SIZE;
 static uint32_t blockMemBlockCount = VMS_DEFAULT_BLOCKMEM_SIZE/sizeof(VMS_Block_t);
@@ -42,7 +40,7 @@ VMS_VoiceData_t * VMSW_getVoiceData(){
     return voiceData[0];
 }
 
-void VMSW_init(){
+void VMSW_init_data(){
     //add vms memory to conman
     
     voiceData = pvPortMalloc(sizeof(VMS_VoiceData_t *) * SIGGEN_OUTPUTCOUNT);
@@ -54,24 +52,6 @@ void VMSW_init(){
     }
     
     VMS_init();
-    
-    xTaskCreate(VMSW_task, "VMS Task", configMINIMAL_STACK_SIZE+256, NULL, tskIDLE_PRIORITY + 3, NULL);
-}
-
-static void VMSW_task(void * params){
-    while(1){
-        //run VMS service
-        
-        //does the synth mode require vms?
-        if(param.synth == SYNTH_MIDI){
-            //yes => run it
-            VMS_run();
-        }else{
-            //no => save some cpu cycles
-            vTaskDelay(pdMS_TO_TICKS(100));
-        }
-        vTaskDelay(1);
-    }
 }
 
 void VMSW_stopNote(uint32_t output, uint32_t note, uint32_t channel){

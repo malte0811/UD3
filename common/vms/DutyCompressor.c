@@ -31,9 +31,7 @@
 #include "task.h"
 #include "DutyCompressor.h"
 #include "cli_common.h"
-#include "ZCDtoPWM.h"
 #include "SignalGenerator.h"
-#include "tasks/tsk_cli.h"
 
 #define COMPSTATE_ATTAC 0
 #define COMPSTATE_SUSTAIN 1
@@ -43,9 +41,6 @@ static int32_t currGain = COMP_UNITYGAIN; //the scale of this value affects spee
 static uint32_t compressorState = 0; 
 static uint32_t compressorSustainCount = 0; 
 static uint32_t compressorWaitCount = 0; 
-
-static int8_t dsgfhjklbgb = 0;
-static int8_t dsgfhjklbgb2 = 0;
 
 void COMP_compress(){
     taskENTER_CRITICAL();
@@ -91,19 +86,6 @@ void COMP_compress(){
     taskEXIT_CRITICAL();
 }
 
-static void COMP_task(void * params){
-    while(1){
-        //TODO maybe make this thread safe? Or at least verify that this will not try to compress right in the middle of some voice values being updated
-        COMP_compress();
-        
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-void Comp_init(){
-    xTaskCreate(COMP_task, "COMP", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 2, NULL);
-}
-
 inline uint32_t Comp_getGain(){
     return currGain;
 }
@@ -113,6 +95,5 @@ inline uint32_t Comp_getState(){
 }
 
 inline uint32_t Comp_getMaxDutyOffset(){
-    dsgfhjklbgb2 = 1;
     return configuration.compressor_maxDutyOffset;
 }

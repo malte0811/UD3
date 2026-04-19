@@ -11,7 +11,7 @@
 #define SIDPROC_INC
 
 #include <stdint.h>
-#include "tasks/tsk_sid.h"
+#include "sid_types.h"
 
 /**
  * @brief Reset SID processor state

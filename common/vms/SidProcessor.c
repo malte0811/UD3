@@ -6,13 +6,10 @@
  */
 
 #include "SidProcessor.h"
-#include <device.h>
 #include <stdint.h>
-#include "queue.h"
-#include "telemetry.h"
-#include "clock.h"
-#include "qcw.h"
-#include "tasks/tsk_sid.h"
+#include "FreeRTOS.h"
+#include "sid_types.h"
+#include "SignalGenerator.h"
 #include "SidFilter.h"
 #include <stdlib.h>
 

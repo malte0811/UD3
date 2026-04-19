@@ -29,6 +29,7 @@
 */
 
 #include "interrupter.h"
+#include "VMS_UD3.h"
 #include "hardware.h"
 #include "ZCDtoPWM.h"
 #include "autotune.h"

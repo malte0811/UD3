@@ -73,6 +73,9 @@
      */
     #define SIGGEN_MAXOT 10900
 
+    /** @brief Maximum volume value (INT16_MAX for signal generator) */
+    #define MAX_VOL INT16_MAX
+
     /** @brief Number of output channels (currently single coil support) */
     #define SIGGEN_OUTPUTCOUNT 1
     /** @brief Number of polyphonic voices (6-voice synthesis) */
@@ -167,8 +170,6 @@
         SigGen_voiceData_t voice[SIGGEN_VOICECOUNT]; /**< Array of 6 polyphonic voices */
         
         /* ===== Buffering ===== */
-        volatile int32_t bufferLengthInCounts; /**< Target pulse buffer fill level in timer counts */
-        volatile RingBuffer_t * pulseBuffer;   /**< Ring buffer for pulse queue (128 entries) */
         volatile uint32_t pulseFlopFlip;       /**< Flip-flop state for pulse alternation logic */
         
         /* ===== TR Mode Burst State ===== */
@@ -201,7 +202,7 @@
      * - FreeRTOS task (8kHz periodic execution)
      * - Hardware timer ISR for pulse output
      */
-    void SigGen_init();
+    void SigGen_init_data();
 
     /* ===== Voice Status Query ===== */
     
@@ -234,14 +235,7 @@
      */
     uint32_t SigGen_volumeToOT(uint32_t volume);
     
-    /**
-     * @brief Parameter change callback for siggen config
-     * @param params Parameter table
-     * @param index Index of changed parameter
-     * @param handle Terminal handle for error messages
-     * @return pdTRUE to accept change, pdFALSE to reject
-     */
-    uint8_t callback_siggen(parameter_entry * params, uint8_t index, TERMINAL_HANDLE * handle);
+    void SigGen_update_min_ot();
 
     /* ===== Global Controls ===== */
     
@@ -255,7 +249,7 @@
      * @brief Switch synthesis mode (MIDI/SID/TR/QCW variants)
      * @param newMode New mode from enum SYNTH
      */
-    void SigGen_switchSynthMode(uint8_t newMode);
+    void SigGen_switchSynthMode(enum SYNTH newMode);
     
     /* ===== TR Mode Voice Control ===== */
     
@@ -345,21 +339,17 @@
      * Disables all voices and flushes pulse buffer.
      * Used for fault handling and user kill command.
      */
+    void SigGen_killAudio_data();
+
+    // Must be defined by VMS API user
     void SigGen_killAudio();
 
-    /* ===== Pulse Queue Interface ===== */
-    
-    /**
-     * @brief Queue a pulse for hardware output
-     * @param pulse Pointer to pulse descriptor (period, onTime, current)
-     * @return 1 if pulse queued successfully, 0 if buffer full
-     *
-     * Units:
-     * - Input: period/onTime in microseconds, current in siggen volume (0-INT16_MAX)
-     * - Internally converted to timer counts and DAC values before queuing
-     *
-     * Thread-safe (uses ring buffer primitives).
-     */
-    uint8_t SigGen_queuePulse(SigGen_pulseData_t* pulse);
+    // Return 0/false to indicate that no further pulses should be written
+    typedef uint8_t (*SigGen_PulseConsumer)(SigGen_pulseData_t const* pulse);
+    typedef int32_t (*SigGen_QueueSizeGetter)();
+
+    void SigGen_generate(SigGen_PulseConsumer output, SigGen_QueueSizeGetter get_queue_size_counts);
+
+    enum SYNTH SigGen_getSynthMode();
 
 #endif

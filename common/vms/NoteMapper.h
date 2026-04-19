@@ -32,7 +32,6 @@
 #define FREQ_MODE_OFFSET 1             //!< Frequency mode: offset from MIDI note
 #define FREQ_MODE_FIXED 0              //!< Frequency mode: fixed frequency
 
-#define MAPPER_MAPMEM_SIZE 2048        //!< Size of NVM map memory in bytes
 #define MAPPER_MAP_NAME_LENGTH 18      //!< Maximum length of map name string
 
 #define MAPPER_VERSION 2               //!< Mapper table format version

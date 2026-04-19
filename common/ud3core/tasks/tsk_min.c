@@ -33,6 +33,7 @@
 #include <cytypes.h>
 
 #include "tsk_min.h"
+#include "sid_types.h"
 #include "tsk_sid.h"
 #include "tsk_midi.h"
 #include "tsk_cli.h"

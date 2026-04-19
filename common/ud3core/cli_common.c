@@ -31,6 +31,7 @@
  */
 
 #include "cli_common.h"
+#include "VMS_UD3.h"
 #include "ZCDtoPWM.h"
 #include "autotune.h"
 #include "interrupter.h"

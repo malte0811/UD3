@@ -16,9 +16,8 @@
 #include "MidiFilter.h"
 #include "TTerm.h"
 #include "SidProcessor.h"
-#include "tasks/tsk_sid.h"
-#include "interrupter.h"
 #include "cli_common.h"
+#include "SignalGenerator.h"
 
 SIDFilterData_t SID_filterData = {
     .channelVolume = {[0 ... N_SIDCHANNEL-1] = MAX_VOL},

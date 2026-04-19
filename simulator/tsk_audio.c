@@ -2,6 +2,7 @@
 
 
 #include "FreeRTOS.h"
+#include "VMS_UD3.h"
 #include "qcw.h"
 #include "task.h"
 #include "queue.h"
@@ -106,7 +107,7 @@ bool is_before(struct timespec a, struct timespec b) {
     }
 }
 
-void simulator_process_audio(SigGen_taskData_t* data, SigGen_pulseData_t* read_pulse) {
+void simulator_process_audio(SigGen_PulseBuffer* buffer, SigGen_pulseData_t* read_pulse) {
     if (!audio_pipe) { return; }
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
@@ -115,8 +116,8 @@ void simulator_process_audio(SigGen_taskData_t* data, SigGen_pulseData_t* read_p
         read_pulse->onTime = read_pulse->current = 0;
     }
     SigGen_pulseData_t next_pulse;
-    while (!buffers.main_buffer_full&& RingBuffer_read(data->pulseBuffer, (void*)&next_pulse, 1) == 1) {
-        data->bufferLengthInCounts -= next_pulse.period;
+    while (!buffers.main_buffer_full&& RingBuffer_read(buffer->pulseBuffer, (void*)&next_pulse, 1) == 1) {
+        buffer->bufferLengthInCounts -= next_pulse.period;
         add_pulse(&buffers, next_pulse);
     }
     if (is_before(buffers.buffer_scheduled_time, now)) {

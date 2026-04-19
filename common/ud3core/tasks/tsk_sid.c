@@ -33,6 +33,7 @@
 #include <cytypes.h>
 
 #include "tsk_sid.h"
+#include "sid_types.h"
 #include "tsk_fault.h"
 #include "clock.h"
 #include "SignalGenerator.h"

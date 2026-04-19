@@ -13,6 +13,7 @@
  */
 
 #include <math.h>
+#include <string.h>
 
 #include "MidiProcessor.h"
 #include "SignalGenerator.h"

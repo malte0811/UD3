@@ -18,9 +18,7 @@
 #include "DLL/include/DLL.h"
 #include "MidiProcessor.h"
 #include "task.h"
-#include "semphr.h"
 #include "utilH/include/util.h"
-#include "tasks/tsk_cli.h"
 
 static DLLObject * VMS_listHead = 0;
 

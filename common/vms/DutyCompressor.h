@@ -13,10 +13,7 @@
 
 #define COMP_UNITYGAIN INT16_MAX //!< Unity gain value (0 dB)
 
-/**
- * @brief Initialize duty cycle compressor
- */
-void Comp_init();
+void COMP_compress(void);
 
 /**
  * @brief Get current compressor gain

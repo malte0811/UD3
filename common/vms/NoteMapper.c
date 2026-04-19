@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "FreeRTOS.h"
+#include "nvm.h"
 #include "task.h"
 #include "DLL/include/DLL.h"
 #include "NoteMapper.h"
@@ -16,14 +17,10 @@
 #include "SignalGenerator.h"
 #include "VMS.h"
 #include "VMSWrapper.h"
-#include "helper/nvm.h"
-#include "interrupter.h"
 #include "cli_common.h"
-#include "tasks/tsk_cli.h"
 
 static MAPTABLE_HEADER_t * channelMap[MIDI_CHANNELCOUNT];
 static uint32_t Mapper_getNextVoice(uint8_t note, uint8_t channel);
-static uint32_t mapMemorySize = MAPPER_MAPMEM_SIZE;
 
 const struct{
     MAPTABLE_HEADER_t h0;
