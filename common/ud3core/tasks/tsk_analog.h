@@ -100,6 +100,10 @@ adc_sample_t* tsk_analog_get_readable_buffer();
 uint16_t read_driver_mv();
 void tsk_analog_recalc_drive_top(float factor);
 
+void tsk_analog_on_qcw_pulse_start();
+
+void tsk_analog_on_qcw_pulse_end();
+
 extern adc_sample_t ADC_sample_buf_0[ADC_BUFFER_CNT];
 extern adc_sample_t ADC_sample_buf_1[ADC_BUFFER_CNT];
 extern SemaphoreHandle_t adc_ready_Semaphore;

@@ -251,22 +251,20 @@ uint8_t CMD_ntc(TERMINAL_HANDLE * handle, uint8_t argCount, char ** args) {
     return TERM_CMD_EXIT_SUCCESS;
 }
 
-void calib_adc(){
-    
-    IDAC_therm_SetValue(THERM_DAC_VAL*3);
-    Therm_Mux_Select(THERM_GND);
-    vTaskDelay(50);
-    int32_t cnt=0;
-    for(uint8_t i = 0;i<4;i++){
-        ADC_therm_StartConvert();
-        vTaskDelay(50);
-        cnt += ADC_therm_GetResult16();
-        if(i==3){
-            cnt /= 4;
-            ADC_therm_SetOffset(cnt);
-            alarm_push(ALM_PRIO_INFO, "ADC: Temperature ADC offset", cnt);
-        }
-    }    
+void calib_adc() {
+
+	IDAC_therm_SetValue(THERM_DAC_VAL * 3);
+	Therm_Mux_Select(THERM_GND);
+	vTaskDelay(50);
+	int32_t cnt = 0;
+	for (uint8_t i = 0; i < 4; i++) {
+		ADC_therm_StartConvert();
+		vTaskDelay(50);
+		cnt += ADC_therm_GetResult16();
+	}
+	cnt /= 4;
+	ADC_therm_SetOffset(cnt);
+	alarm_push(ALM_PRIO_INFO, "ADC: Temperature ADC offset", cnt);
 }
 
 uint8_t callback_temp_pid(parameter_entry * params, uint8_t index, TERMINAL_HANDLE * handle){

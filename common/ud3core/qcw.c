@@ -32,6 +32,7 @@
 #include "ZCDtoPWM.h"
 #include "helper/teslaterm.h"
 #include "min_id.h"
+#include "tasks/tsk_analog.h"
 #include "tasks/tsk_min.h"
 #include "telemetry.h"
 
@@ -45,6 +46,7 @@ void qcw_handle(){
         QCW_enable_Control = 0;
         params.pwmb_psb_val = 0;
         ramp.index = 0;
+        tsk_analog_on_qcw_pulse_end();
     }else{
         qcw_modulate(ramp.data[ramp.index]);
         ramp.index++;
@@ -186,8 +188,9 @@ void qcw_start(){
     if(tt.n.dutycycle.value > configuration.max_qcw_duty) return;  //Don't command a pulse if duty is too high
 
     ramp.index=0;
-	//the next stuff is time sensitive, so disable interrupts to avoid glitches
+    //the next stuff is time sensitive, so disable interrupts to avoid glitches
 	CyGlobalIntDisable;
+    tsk_analog_on_qcw_pulse_start();
 	//now enable the QCW interrupter
 	QCW_enable_Control = 1;
 	params.pwmb_psb_val = params.pwm_top - params.pwmb_start_psb_val;
