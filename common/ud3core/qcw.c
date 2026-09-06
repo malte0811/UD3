@@ -78,7 +78,8 @@ static uint8_t shift_for_relative_voltage(uint8_t relative_voltage) {
 }
 
 static void qcw_modulate(uint8_t relative_voltage){
-    uint8_t relative_shift = shift_for_relative_voltage(relative_voltage);
+    CT1_dac_SetValue(relative_voltage);
+    /*
     //linearize modulation value based on fb_filter_out period
 	uint8_t shift_period = (((uint16_t) relative_shift) * (params.pwm_top - fb_filter_out)) >> 8;
 	//assign new modulation value to the params.pwmb_psb_val ram
@@ -87,6 +88,7 @@ static void qcw_modulate(uint8_t relative_voltage){
 	} else {
 		params.pwmb_psb_val = params.pwm_top - (shift_period + params.pwmb_start_psb_val);
 	}
+    */
 }
 
 void qcw_handle() {
@@ -146,7 +148,7 @@ void qcw_regenerate_ramp(){
     float ramp_increment = param.qcw_ramp / 100.0;
     float ramp_val = param.qcw_offset;
     for(uint16_t i=0;i<max_active;i++){
-        ramp.data[i]=floorf(ramp_val);
+        uint8_t value=floorf(ramp_val);
         if(i>=param.qcw_holdoff){
             ramp_val += ramp_increment;
             if(ramp_val > ramp_max) { ramp_val = ramp_max; }
@@ -156,10 +158,12 @@ void qcw_regenerate_ramp(){
                     modulation_high = !modulation_high;
                 }
                 if(modulation_high){
-                    ramp.data[i] += param.qcw_vol;
+                    value += param.qcw_vol;
                 }
             }
         }
+        uint16_t current = (configuration.max_qcw_current * value) / 255;
+        ramp.data[i] = current_to_ct1_dac_value(current);
     }
     // Fill inactive portion of QCW buffer with zeroes for clean display in TT
     memset(ramp.data + max_active, 0, QCW_RAMP_SAMPLES - max_active);

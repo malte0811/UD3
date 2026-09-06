@@ -84,6 +84,7 @@ uint8_t no_fb_reg_Read();
 #define ZCD_compB_Start()
 #define CT1_comp_Start()
 #define CT1_dac_Start()
+#define CT1_dac_SetValue(val)
 #define ZCDref_Start()
 #define FB_Filter_Start()
 #define FB_Filter_SetCoherency(FB_Filter_CHANNEL_A, FB_Filter_KEY_MID)
