@@ -60,36 +60,26 @@ void initialize_ZCD_to_PWM(void) {
 	configure_ZCD_to_PWM();
 }
 
+uint8_t current_to_ct1_dac_value(uint16_t current) {
+    float current_after_ct = (float)current / (float)configuration.ct1_ratio;
+    float ct_voltage = current_after_ct * configuration.ct1_burden;
+    float dac_value = ct_voltage / (DAC_VOLTS_PER_STEP * 10);
+    if (dac_value > 255) {
+        return 255;
+    } else {
+        return round(dac_value);
+    }
+}
+
 void configure_CT1(void) {
-
-	float max_tr_cl_dac_val_temp;
-	float max_qcw_cl_dac_val_temp;
-	float min_tr_cl_dac_val_temp;
-
-	//figure out the CT setups
-	max_tr_cl_dac_val_temp = (((float)configuration.max_tr_current / (float)configuration.ct1_ratio) * configuration.ct1_burden) / (DAC_VOLTS_PER_STEP * 10);
-	if (max_tr_cl_dac_val_temp > 255) {
-		max_tr_cl_dac_val_temp = 255;
-	}
-    
-    params.max_tr_cl_dac_val = round(max_tr_cl_dac_val_temp);
-
-	max_qcw_cl_dac_val_temp = (((float)configuration.max_qcw_current / (float)configuration.ct1_ratio) * configuration.ct1_burden) / (DAC_VOLTS_PER_STEP * 10);
-	if (max_qcw_cl_dac_val_temp > 255) {
-		max_qcw_cl_dac_val_temp = 255;
-	}
-
-	min_tr_cl_dac_val_temp = (((float)configuration.min_tr_current / (float)configuration.ct1_ratio) * configuration.ct1_burden) / (DAC_VOLTS_PER_STEP * 10);
-	if (min_tr_cl_dac_val_temp > 255) {
-		min_tr_cl_dac_val_temp = 255;
-	}
-	params.min_tr_cl_dac_val = round(min_tr_cl_dac_val_temp);
+    params.max_tr_cl_dac_val = current_to_ct1_dac_value(configuration.max_tr_current);
+    params.min_tr_cl_dac_val = current_to_ct1_dac_value(configuration.min_tr_current);
+	params.diff_tr_cl_dac_val = params.max_tr_cl_dac_val - params.min_tr_cl_dac_val;
 
 	ct1_dac_val[0] = params.max_tr_cl_dac_val;
+    // TODO what is the point of this?
 	ct1_dac_val[1] = params.max_tr_cl_dac_val;
-	ct1_dac_val[2] = round(max_qcw_cl_dac_val_temp);
-
-	params.diff_tr_cl_dac_val = params.max_tr_cl_dac_val - params.min_tr_cl_dac_val;
+	ct1_dac_val[2] = current_to_ct1_dac_value(configuration.max_qcw_current);
 }
 
 void configure_CT2(void) {

@@ -59,6 +59,8 @@ void configure_ZCD_to_PWM(void);
 void configure_CT1(void);
 void configure_CT2(void);
 
+uint8_t current_to_ct1_dac_value(uint16_t current);
+
 #endif
 
 //[] END OF FILE
