@@ -141,6 +141,8 @@ void qcw_regenerate_ramp(){
     if (max_active > sizeof(ramp.data)) { max_active = sizeof(ramp.data); }
     ramp.stop_index = max_active;
 
+    float const ramp_exponent = param.qcw_exponent / 100.f;
+
     // Generate ramp: Stay at qcw_offset for qcw_holdoff samples. Afterwards, increase the "base ramp" at ramp_increment
     // per sample until ramp_max is reached. If modulation is enabled, add a square wave from 0 to qcw_vol and
     // frequency qcw_freq to this ramp.
@@ -162,8 +164,8 @@ void qcw_regenerate_ramp(){
                 }
             }
         }
-        uint16_t current = (configuration.max_qcw_current * value) / 255;
-        ramp.data[i] = current_to_ct1_dac_value(current);
+        float relative_current = pow(((float) value) / 255.f, ramp_exponent);
+        ramp.data[i] = current_to_ct1_dac_value(relative_current * configuration.max_qcw_current);
     }
     // Fill inactive portion of QCW buffer with zeroes for clean display in TT
     memset(ramp.data + max_active, 0, QCW_RAMP_SAMPLES - max_active);

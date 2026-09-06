@@ -157,6 +157,8 @@ struct parameter_struct{
     uint8_t     qcw_vol;
     // Unit: 10 us
     uint16_t    qcw_pw;
+    // 100x exponent
+    uint8_t    qcw_exponent;
     uint16_t    burst_on;
     uint16_t    burst_off;
     uint8_t     synth;
