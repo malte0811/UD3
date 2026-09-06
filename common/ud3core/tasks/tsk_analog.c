@@ -95,8 +95,7 @@ static rms_t current_idc;
 static rms_t voltage_bus;
 static rms_t voltage_batt;
 
-// Maps from order of fields in adc_sample_t to order of MUX inputs
-static uint8_t ADC_mux_ctl[4] = {0x01, 0x02, 0x03, 0x00};
+static uint8_t ADC_mux_ctl[4] = {0x05, 0x02, 0x03, 0x00};
 static uint8 ADC_DMA_Chan;
 static uint8 ADC_DMA_TD[2];
 
@@ -112,9 +111,6 @@ static uint32_t vdriver_raw;
  * meaningful.
  */
 /* `#START USER_TASK_LOCAL_CODE` */
-
-static bool log_as_qcw = false;
-static bool is_last_qcw = false;
 
 CY_ISR(ADC_data_ready_ISR) {
 	xSemaphoreGiveFromISR(adc_ready_Semaphore, NULL);
@@ -193,43 +189,38 @@ uint16_t average_filter(uint32_t *ptr, uint16_t sample) {
 }
 
 void calculate_rms(void) {
+    
+    uint32_t vdriver_accu=0;
+    
     adc_sample_t* buffer = tsk_analog_get_readable_buffer();
-    if (log_as_qcw) {
-        min_queue_frame(&min_ctx, 44, (uint8_t *)buffer, sizeof(ADC_sample_buf_0));
-        if (is_last_qcw) {
-            MUX_Only_VBus_Write(0);
-            log_as_qcw = false;
-            is_last_qcw = false;
-        }
-    } else {
-        uint32_t vdriver_accu=0;
-        for(uint8_t i=0;i<ADC_BUFFER_CNT;i++){
+    for(uint8_t i=0;i<ADC_BUFFER_CNT;i++){
 
-            // read the battery voltage
-            tt.n.batt_v.value = read_bus_mv(rms_filter(&voltage_batt, buffer[i].v_batt)) / 1000;
+		// read the battery voltage
+		tt.n.batt_v.value = read_bus_mv(rms_filter(&voltage_batt, buffer[i].v_batt)) / 1000;
 
-            // read the bus voltage
-            tt.n.bus_v.value = read_bus_mv(rms_filter(&voltage_bus, buffer[i].v_bus)) / 1000;
+		// read the bus voltage
+		tt.n.bus_v.value = read_bus_mv(rms_filter(&voltage_bus, buffer[i].v_bus)) / 1000;
 
-            // read the battery current
-            if(configuration.ct2_type==CT2_TYPE_CURRENT){
-                tt.n.batt_i.value = (((uint32_t)rms_filter(&current_idc, buffer[i].i_bus) * params.idc_ma_count) / 100);
-            }else{
-                tt.n.batt_i.value = ((((int32_t)rms_filter(&current_idc, buffer[i].i_bus-params.ct2_offset_cnt)) * params.idc_ma_count) / 100);
-            }
-
-            tt.n.avg_power.value = tt.n.batt_i.value * tt.n.bus_v.value / 10;
-
-            vdriver_accu += buffer[i].v_driver;
+		// read the battery current
+        if(configuration.ct2_type==CT2_TYPE_CURRENT){
+		    tt.n.batt_i.value = (((uint32_t)rms_filter(&current_idc, buffer[i].i_bus) * params.idc_ma_count) / 100);
+        }else{
+            tt.n.batt_i.value = ((((int32_t)rms_filter(&current_idc, buffer[i].i_bus-params.ct2_offset_cnt)) * params.idc_ma_count) / 100);
         }
 
-        vdriver_raw = vdriver_accu / ADC_BUFFER_CNT;
+		tt.n.avg_power.value = tt.n.batt_i.value * tt.n.bus_v.value / 10;
+        
+        vdriver_accu += buffer[i].v_driver;
+        
+	}
+    
+    vdriver_raw = vdriver_accu / ADC_BUFFER_CNT;
+    
+    tt.n.primary_i.value = CT1_Get_Current();
+      
+   
+	control_precharge();
 
-        tt.n.primary_i.value = CT1_Get_Current();
-
-
-        control_precharge();
-    }
 }
 
 
@@ -253,10 +244,10 @@ void initialize_analogs(void) {
 
 	/* Variable declarations for MUX_DMA */
 	/* Move these variable declarations to the top of the function */
-	/* DMA Configuration for MUX_DMA */
-    uint8 MUX_DMA_Chan;
-    uint8 MUX_DMA_TD[1];
+	uint8 MUX_DMA_Chan;
+	uint8 MUX_DMA_TD[1];
 
+	/* DMA Configuration for MUX_DMA */
 	MUX_DMA_Chan = MUX_DMA_DmaInitialize(MUX_DMA_BYTES_PER_BURST, MUX_DMA_REQUEST_PER_BURST, HI16(MUX_DMA_SRC_BASE), HI16(MUX_DMA_DST_BASE));
 	MUX_DMA_TD[0] = CyDmaTdAllocate();
 	CyDmaTdSetConfiguration(MUX_DMA_TD[0], 4, MUX_DMA_TD[0], CY_DMA_TD_INC_SRC_ADR);
@@ -456,17 +447,6 @@ void tsk_analog_Start(void) {
 		tsk_analog_initVar = 1;
 	}
 }
-
-void tsk_analog_on_qcw_pulse_start() {
-    MUX_Only_VBus_Write(1);
-	log_as_qcw = true;
-	is_last_qcw = false;
-}
-
-void tsk_analog_on_qcw_pulse_end() {
-	is_last_qcw = true;
-}
-
 /* ------------------------------------------------------------------------ */
 /* ======================================================================== */
 /* [] END OF FILE */
