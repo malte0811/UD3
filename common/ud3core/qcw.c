@@ -148,12 +148,11 @@ void qcw_regenerate_ramp(){
     // frequency qcw_freq to this ramp.
     uint8_t modulation_high = pdFALSE;
     float ramp_increment = param.qcw_ramp / 100.0;
-    float ramp_val = param.qcw_offset;
+    float ramp_val = 0;
     for(uint16_t i=0;i<max_active;i++){
-        uint8_t value=floorf(ramp_val);
+        uint16_t value=floorf(ramp_val);
         if(i>=param.qcw_holdoff){
             ramp_val += ramp_increment;
-            if(ramp_val > ramp_max) { ramp_val = ramp_max; }
 
             if(param.qcw_vol > 0){
                 if((i % modulation_period) == 0){
@@ -165,8 +164,11 @@ void qcw_regenerate_ramp(){
             }
         }
         float relative_current = pow(((float) value) / 255.f, ramp_exponent);
+        relative_current += param.qcw_offset / 255.f;
+        if (relative_current > 1) { relative_current = 1; }
         ramp.data[i] = current_to_ct1_dac_value(relative_current * configuration.max_qcw_current);
     }
+    ramp.data[0] = current_to_ct1_dac_value(param.qcw_first_sample);
     // Fill inactive portion of QCW buffer with zeroes for clean display in TT
     memset(ramp.data + max_active, 0, QCW_RAMP_SAMPLES - max_active);
     ramp.changed = pdFALSE;
@@ -242,6 +244,7 @@ void qcw_start(){
     if(tt.n.dutycycle.value > configuration.max_qcw_duty) return;  //Don't command a pulse if duty is too high
 
     ramp.index=0;
+    qcw_modulate(ramp.data[0]);
 	//the next stuff is time sensitive, so disable interrupts to avoid glitches
 	CyGlobalIntDisable;
 	//now enable the QCW interrupter

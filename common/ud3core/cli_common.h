@@ -159,6 +159,8 @@ struct parameter_struct{
     uint16_t    qcw_pw;
     // 100x exponent
     uint8_t    qcw_exponent;
+    // Unit: A
+    uint8_t qcw_first_sample;
     uint16_t    burst_on;
     uint16_t    burst_off;
     uint8_t     synth;

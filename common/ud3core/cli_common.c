@@ -175,6 +175,7 @@ void init_config(){
     
     param.qcw_repeat = 500;
     param.qcw_exponent = 82;
+    param.qcw_first_sample = 30;
     param.synth = SYNTH_OFF;
     
     param.qcw_holdoff = 0;
@@ -217,7 +218,8 @@ parameter_entry confparam[] = {
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_vol"         , param.qcw_vol                 , 0      ,255    ,0      ,callback_rampFunction       ,"QCW Ramp modulation volume")
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_pw"          , param.qcw_pw                  , 0      ,5000   ,100    ,callback_rampFunction       ,"QCW pulse width")
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_repeat"      , param.qcw_repeat              , 0      ,1000   ,0      ,NULL                        ,"QCW pulse repeat time [ms] <100=single shot")
-    ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_exponent"    , param.qcw_exponent            , 0      ,200    ,100    ,NULL                        ,"QCW current ramp exponent")
+    ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_exponent"    , param.qcw_exponent            , 0      ,200    ,100    ,callback_rampFunction       ,"QCW current ramp exponent")
+    ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"qcw_first"       , param.qcw_first_sample        , 0      ,255    ,0      ,callback_rampFunction       ,"QCW current ramp exponent")
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"synth"           , param.synth                   , 0      ,3      ,0      ,callback_SynthFunction      ,"0=off 1=MIDI 2=SID 3=TR")    
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"sid_hpv_enabled" , SID_filterData.hpvEnabledGlobally, 0      ,1      ,0      ,NULL                     ,"use hpv for playing square sid voices")    
     ADD_PARAM(PARAM_DEFAULT ,pdTRUE ,"sid_noise_volume", SID_filterData.noiseVolume    , 0      ,MAX_VOL,0      ,NULL                        ,"sid noise volume [0-MAX_VOL] = [0-32767]")    
