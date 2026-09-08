@@ -93,7 +93,7 @@ static void qcw_modulate(uint8_t relative_voltage){
 
 void qcw_handle() {
     if (ramp.index >= ramp.stop_index) {
-        qcw_modulate(0);
+        //qcw_modulate(0);
         QCW_enable_Control = 0;
         params.pwmb_psb_val = 0;
         ramp.index = 0;
